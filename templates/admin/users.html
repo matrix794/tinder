@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Админ · Пользователи{% endblock %}
+
+{% block content %}
+<section class="card admin-page">
+    <div class="admin-page-header">
+        <div>
+            <h2>Управление пользователями</h2>
+            <p class="admin-subtitle">Список всех аккаунтов платформы</p>
+        </div>
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline">← Панель</a>
+    </div>
+
+    {% if users %}
+        <div class="admin-table-wrapper">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Логин</th>
+                        <th>Email</th>
+                        <th>Создан</th>
+                        <th>Профиль</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                        <tr>
+                            <td>#{{ user.id }}</td>
+                            <td>{{ user.username }}</td>
+                            <td>{{ user.email }}</td>
+                            <td>{{ user.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                            <td>
+                                {% if user.profile %}
+                                    <span class="badge badge-success">есть</span>
+                                {% else %}
+                                    <span class="badge">нет</span>
+                                {% endif %}
+                            </td>
+                            <td class="admin-table-actions">
+                                {% if current_user.id != user.id %}
+                                    <form action="{{ url_for('admin_delete_user', user_id=user.id) }}" method="post" onsubmit="return confirm('Удалить пользователя {{ user.username }}? Это действие необратимо.');">
+                                        <button type="submit" class="btn btn-danger">Удалить</button>
+                                    </form>
+                                {% else %}
+                                    <span class="badge">Это вы</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p class="empty">Пользователи не найдены.</p>
+    {% endif %}
+</section>
+{% endblock %}
+

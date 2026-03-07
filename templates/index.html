@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="card hero-card">
+    <span class="hero-eyebrow">Учебный мэтчинг</span>
+    <h2 class="hero-title">Добро пожаловать в <span class="highlight">Tinder для учебы</span></h2>
+    {% if current_user.is_authenticated %}
+        {% if current_user.profile %}
+            <p class="hero-description">Привет, {{ current_user.profile.full_name }}! Настраивайтесь на вдохновляющее сотрудничество и находите напарников, которые разделяют ваши цели и темп.</p>
+            <div class="action-buttons hero-actions">
+                <a href="{{ url_for('tinder') }}" class="btn btn-primary">💕 Начать поиск</a>
+                <a href="{{ url_for('matches') }}" class="btn btn-secondary">Мои мэтчи</a>
+                <a href="{{ url_for('my_profile') }}" class="btn btn-outline">Мой профиль</a>
+            </div>
+        {% else %}
+            <p class="hero-description">Создайте профиль студента и расскажите о себе, чтобы система подобрала идеальных партнеров для проектов, подготовки к экзаменам и разбора сложных тем.</p>
+            <div class="action-buttons hero-actions">
+                <a href="{{ url_for('create_profile') }}" class="btn btn-primary">Создать профиль</a>
+            </div>
+        {% endif %}
+    {% else %}
+        <p class="hero-description">Платформа помогает студентам находить единомышленников для совместного обучения, групповых проектов и продуктивных встреч. Присоединяйтесь, чтобы прокачать учебу вместе!</p>
+        <div class="action-buttons hero-actions">
+            <a href="{{ url_for('register') }}" class="btn btn-primary">Регистрация</a>
+            <a href="{{ url_for('login') }}" class="btn btn-secondary">Войти</a>
+        </div>
+    {% endif %}
+</section>
+{% endblock %}

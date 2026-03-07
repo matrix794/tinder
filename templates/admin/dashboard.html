@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Админ-панель{% endblock %}
+
+{% block content %}
+<section class="card admin-dashboard">
+    <div class="admin-header">
+        <h2>Административная панель</h2>
+        <p class="admin-subtitle">Мониторинг активности сообщества и последние события</p>
+    </div>
+
+    <div class="admin-actions">
+        <a href="{{ url_for('admin_users') }}" class="btn btn-primary">Управление пользователями</a>
+        <a href="{{ url_for('admin_messages') }}" class="btn btn-secondary">Просмотр сообщений</a>
+    </div>
+
+    <div class="admin-stats-grid">
+        <div class="admin-stat-card">
+            <span class="label">Пользователи</span>
+            <strong>{{ stats.total_users }}</strong>
+        </div>
+        <div class="admin-stat-card">
+            <span class="label">Профили</span>
+            <strong>{{ stats.total_profiles }}</strong>
+            <small>{{ stats.total_active_profiles }} активных</small>
+        </div>
+        <div class="admin-stat-card">
+            <span class="label">Матчи</span>
+            <strong>{{ stats.total_matches }}</strong>
+        </div>
+        <div class="admin-stat-card">
+            <span class="label">Сообщения</span>
+            <strong>{{ stats.total_messages }}</strong>
+        </div>
+    </div>
+
+    <div class="admin-columns">
+        <div class="admin-column">
+            <h3>Новые пользователи</h3>
+            {% if latest_users %}
+                <ul class="admin-list">
+                    {% for user in latest_users %}
+                        <li>
+                            <span class="primary">{{ user.username }}</span>
+                            <span class="meta">{{ user.email }}</span>
+                            <span class="time">{{ user.created_at.strftime('%d.%m.%Y %H:%M') }}</span>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="empty">Пока нет данных.</p>
+            {% endif %}
+        </div>
+        <div class="admin-column">
+            <h3>Новые профили</h3>
+            {% if latest_profiles %}
+                <ul class="admin-list">
+                    {% for profile in latest_profiles %}
+                        <li>
+                            <span class="primary">{{ profile.full_name }}</span>
+                            <span class="meta">{{ profile.university }} · {{ profile.course }} курс</span>
+                            <span class="time">{{ profile.created_at.strftime('%d.%m.%Y %H:%M') }}</span>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="empty">Нет активных профилей.</p>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endblock %}
+

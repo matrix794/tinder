@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Поиск партнеров - Tinder для учебы{% endblock %}
+
+{% block content %}
+<section class="card">
+    <h2>Поиск партнеров для учебы</h2>
+    <p>Найдите единомышленников для совместной работы над проектами и подготовки к экзаменам</p>
+</section>
+
+{% if profiles %}
+    <div class="profiles-grid">
+        {% for profile in profiles %}
+        <div class="profile-card">
+            <div class="profile-header">
+                <div class="profile-header-content">
+                    {% if profile.photo_filename %}
+                    <div class="profile-photo-small">
+                        <img src="{{ url_for('uploaded_file', filename=profile.photo_filename) }}" alt="Фото профиля" class="profile-photo-img-small">
+                    </div>
+                    {% endif %}
+                    <div class="profile-info">
+                        <h3>{{ profile.full_name }}</h3>
+                        <div class="profile-meta">
+                            <span class="course-badge">{{ profile.course }} курс</span>
+                            <span class="university">{{ profile.university }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="profile-preview">
+                <div class="profile-section">
+                    <h4>Факультет</h4>
+                    <p>{{ profile.faculty }}</p>
+                </div>
+
+                <div class="profile-section">
+                    <h4>Предметы</h4>
+                    <div class="tags">
+                        {% for subject in profile.subjects.split(',')[:3] %}
+                            <span class="tag">{{ subject.strip() }}</span>
+                        {% endfor %}
+                        {% if profile.subjects.split(',')|length > 3 %}
+                            <span class="tag tag-more">+{{ profile.subjects.split(',')|length - 3 }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="profile-section">
+                    <h4>Интересы</h4>
+                    <div class="tags">
+                        {% for interest in profile.interests.split(',')[:3] %}
+                            <span class="tag tag-interest">{{ interest.strip() }}</span>
+                        {% endfor %}
+                        {% if profile.interests.split(',')|length > 3 %}
+                            <span class="tag tag-more">+{{ profile.interests.split(',')|length - 3 }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="profile-section">
+                    <h4>О себе</h4>
+                    <p class="description-preview">{{ profile.description[:150] }}{% if profile.description|length > 150 %}...{% endif %}</p>
+                </div>
+            </div>
+
+            <div class="profile-actions">
+                <a href="{{ url_for('view_profile', profile_id=profile.id) }}" class="btn btn-primary">Посмотреть профиль</a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <section class="card">
+        <h3>Пока нет активных профилей</h3>
+        <p>Станьте первым, кто создаст профиль и найдет партнера для учебы!</p>
+        <div class="action-buttons">
+            <a href="{{ url_for('create_profile') }}" class="btn btn-primary">Создать профиль</a>
+        </div>
+    </section>
+{% endif %}
+{% endblock %}

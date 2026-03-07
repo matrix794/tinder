@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Мой профиль - Tinder для учебы{% endblock %}
+
+{% block content %}
+<section class="card profile-card">
+    <div class="profile-header">
+        <div class="profile-header-content">
+            {% if profile.photo_filename %}
+            <div class="profile-photo">
+                <img src="{{ url_for('uploaded_file', filename=profile.photo_filename) }}" alt="Фото профиля" class="profile-photo-img">
+            </div>
+            {% endif %}
+            <div class="profile-info">
+                <h2>{{ profile.full_name }}</h2>
+                <div class="profile-meta">
+                    <span class="course-badge">{{ profile.course }} курс</span>
+                    <span class="university">{{ profile.university }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="profile-content">
+        <div class="profile-section">
+            <h3>Образование</h3>
+            <p><strong>Факультет:</strong> {{ profile.faculty }}</p>
+            <p><strong>Курс:</strong> {{ profile.course }}</p>
+        </div>
+
+        <div class="profile-section">
+            <h3>Предметы</h3>
+            <div class="tags">
+                {% for subject in profile.subjects.split(',') %}
+                    <span class="tag">{{ subject.strip() }}</span>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="profile-section">
+            <h3>Интересы</h3>
+            <div class="tags">
+                {% for interest in profile.interests.split(',') %}
+                    <span class="tag tag-interest">{{ interest.strip() }}</span>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="profile-section">
+            <h3>О себе</h3>
+            <p>{{ profile.description }}</p>
+        </div>
+
+        <div class="profile-section">
+            <h3>Цели обучения</h3>
+            <p>{{ profile.goals }}</p>
+        </div>
+
+        {% if profile.preferred_subjects %}
+        <div class="profile-section">
+            <h3>Интересующие предметы у партнера</h3>
+            <div class="tags">
+                {% for subject in profile.preferred_subjects.split(',') %}
+                    <span class="tag tag-preferred">{{ subject.strip() }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if profile.preferred_course != 'any' %}
+        <div class="profile-section">
+            <h3>Предпочтительный курс партнера</h3>
+            <p>{{ profile.preferred_course }}</p>
+        </div>
+        {% endif %}
+
+        {% if profile.telegram or profile.discord %}
+        <div class="profile-section">
+            <h3>Контакты</h3>
+            {% if profile.telegram %}
+                <p><strong>Telegram:</strong> {{ profile.telegram }}</p>
+            {% endif %}
+            {% if profile.discord %}
+                <p><strong>Discord:</strong> {{ profile.discord }}</p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="profile-actions">
+        <a href="{{ url_for('edit_profile') }}" class="btn btn-primary">Редактировать профиль</a>
+        <a href="{{ url_for('tinder') }}" class="btn btn-secondary">💕 Tinder</a>
+    </div>
+</section>
+{% endblock %}

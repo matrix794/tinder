@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Профиль - Tinder{% endblock %}
+
+{% block content %}
+<section class="card">
+    <h2>Мой профиль</h2>
+    <div class="profile-info">
+        <p><strong>Имя пользователя:</strong> {{ current_user.username }}</p>
+        <p><strong>Email:</strong> {{ current_user.email }}</p>
+        <p><strong>ID:</strong> {{ current_user.id }}</p>
+    </div>
+    
+    <div class="action-buttons">
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">На главную</a>
+        <a href="{{ url_for('logout') }}" class="btn btn-danger">Выйти</a>
+    </div>
+</section>
+{% endblock %}

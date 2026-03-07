@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Админ · Сообщения{% endblock %}
+
+{% block content %}
+<section class="card admin-page">
+    <div class="admin-page-header">
+        <div>
+            <h2>Переписки пользователей</h2>
+            <p class="admin-subtitle">Последние сообщения (до 200 записей)</p>
+        </div>
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline">← Панель</a>
+    </div>
+
+    {% if messages %}
+        <div class="admin-table-wrapper">
+            <table class="admin-table admin-messages-table">
+                <thead>
+                    <tr>
+                        <th>Время</th>
+                        <th>От</th>
+                        <th>Кому</th>
+                        <th>Текст</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for message in messages %}
+                        <tr>
+                            <td>{{ message.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                            <td>
+                                {{ message.sender.profile.full_name if message.sender.profile else message.sender.username }}<br>
+                                <span class="meta">@{{ message.sender.username }}</span>
+                            </td>
+                            <td>
+                                {{ message.receiver.profile.full_name if message.receiver.profile else message.receiver.username }}<br>
+                                <span class="meta">@{{ message.receiver.username }}</span>
+                            </td>
+                            <td>
+                                <div class="message-bubble">{{ message.content }}</div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p class="empty">Сообщений пока нет.</p>
+    {% endif %}
+</section>
+{% endblock %}
+

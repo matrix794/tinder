@@ -1,0 +1,210 @@
+{% extends "create_profile.html" %}
+
+{% block title %}Редактирование профиля - Tinder для учебы{% endblock %}
+
+{% block content %}
+<section class="card profile-form-card">
+    <h2>Редактирование профиля</h2>
+    <p class="form-description">Обновите информацию в вашей анкете</p>
+    
+    <form method="POST" enctype="multipart/form-data" class="profile-form">
+        {{ form.hidden_tag() }}
+        
+        <div class="form-section">
+            <h3>Основная информация</h3>
+            
+            <div class="form-group">
+                {{ form.full_name.label(class="form-label") }}
+                {{ form.full_name(class="form-input") }}
+                {% if form.full_name.errors %}
+                    <div class="form-errors">
+                        {% for error in form.full_name.errors %}
+                            <span class="error">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    {{ form.university.label(class="form-label") }}
+                    {{ form.university(class="form-input") }}
+                    {% if form.university.errors %}
+                        <div class="form-errors">
+                            {% for error in form.university.errors %}
+                                <span class="error">{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    {{ form.faculty.label(class="form-label") }}
+                    {{ form.faculty(class="form-input") }}
+                    {% if form.faculty.errors %}
+                        <div class="form-errors">
+                            {% for error in form.faculty.errors %}
+                                <span class="error">{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="form-group">
+                {{ form.course.label(class="form-label") }}
+                {{ form.course(class="form-select") }}
+                {% if form.course.errors %}
+                    <div class="form-errors">
+                        {% for error in form.course.errors %}
+                            <span class="error">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>Предметы и интересы</h3>
+            
+            <div class="form-group">
+                {{ form.subjects.label(class="form-label") }}
+                {{ form.subjects(class="form-textarea") }}
+                {% if form.subjects.errors %}
+                    <div class="form-errors">
+                        {% for error in form.subjects.errors %}
+                            <span class="error">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="form-group">
+                {{ form.interests.label(class="form-label") }}
+                {{ form.interests(class="form-textarea") }}
+                {% if form.interests.errors %}
+                    <div class="form-errors">
+                        {% for error in form.interests.errors %}
+                            <span class="error">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>О себе и целях</h3>
+            
+            <div class="form-group">
+                {{ form.description.label(class="form-label") }}
+                {{ form.description(class="form-textarea") }}
+                {% if form.description.errors %}
+                    <div class="form-errors">
+                        {% for error in form.description.errors %}
+                            <span class="error">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="form-group">
+                {{ form.goals.label(class="form-label") }}
+                {{ form.goals(class="form-textarea") }}
+                {% if form.goals.errors %}
+                    <div class="form-errors">
+                        {% for error in form.goals.errors %}
+                            <span class="error">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>Предпочтения по партнеру</h3>
+            
+            <div class="form-group">
+                {{ form.preferred_subjects.label(class="form-label") }}
+                {{ form.preferred_subjects(class="form-textarea") }}
+                {% if form.preferred_subjects.errors %}
+                    <div class="form-errors">
+                        {% for error in form.preferred_subjects.errors %}
+                            <span class="error">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="form-group">
+                {{ form.preferred_course.label(class="form-label") }}
+                {{ form.preferred_course(class="form-select") }}
+                {% if form.preferred_course.errors %}
+                    <div class="form-errors">
+                        {% for error in form.preferred_course.errors %}
+                            <span class="error">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>Контактная информация</h3>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    {{ form.telegram.label(class="form-label") }}
+                    {{ form.telegram(class="form-input") }}
+                    {% if form.telegram.errors %}
+                        <div class="form-errors">
+                            {% for error in form.telegram.errors %}
+                                <span class="error">{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    {{ form.discord.label(class="form-label") }}
+                    {{ form.discord(class="form-input") }}
+                    {% if form.discord.errors %}
+                        <div class="form-errors">
+                            {% for error in form.discord.errors %}
+                                <span class="error">{{ error }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>Фото профиля</h3>
+            
+            {% if profile.photo_filename %}
+            <div class="current-photo">
+                <h4>Текущее фото:</h4>
+                <img src="{{ url_for('uploaded_file', filename=profile.photo_filename) }}" alt="Текущее фото" class="profile-photo-preview">
+            </div>
+            {% endif %}
+            
+            <div class="form-group">
+                {{ form.photo.label(class="form-label") }}
+                {{ form.photo(class="form-file") }}
+                <div class="form-help">Загрузите новое фото профиля (JPG, PNG, GIF). Максимальный размер: 5MB</div>
+                {% if form.photo.errors %}
+                    <div class="form-errors">
+                        {% for error in form.photo.errors %}
+                            <span class="error">{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="form-group">
+            {{ form.submit(class="btn btn-primary btn-full") }}
+        </div>
+    </form>
+</section>
+{% endblock %}
