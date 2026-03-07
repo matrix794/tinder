@@ -1,29 +1,84 @@
 {% extends "base.html" %}
 
+{% block body_class %}home-page{% endblock %}
+
 {% block content %}
-<section class="card hero-card">
-    <span class="hero-eyebrow">Учебный мэтчинг</span>
-    <h2 class="hero-title">Добро пожаловать в <span class="highlight">Tinder для учебы</span></h2>
-    {% if current_user.is_authenticated %}
-        {% if current_user.profile %}
-            <p class="hero-description">Привет, {{ current_user.profile.full_name }}! Настраивайтесь на вдохновляющее сотрудничество и находите напарников, которые разделяют ваши цели и темп.</p>
-            <div class="action-buttons hero-actions">
-                <a href="{{ url_for('tinder') }}" class="btn btn-primary">💕 Начать поиск</a>
-                <a href="{{ url_for('matches') }}" class="btn btn-secondary">Мои мэтчи</a>
-                <a href="{{ url_for('my_profile') }}" class="btn btn-outline">Мой профиль</a>
+<section class="hero-section">
+    <div class="hero-bg"></div>
+    <div class="hero-inner">
+        <div class="hero-col-left">
+            <span class="hero-eyebrow">
+                <svg class="hero-eyebrow-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 4.1L18 9l-4.1 1.9L12 15l-1.9-4.1L6 9l4.1-1.9z"/><path d="M19 13l.9 2.1L22 16l-2.1.9L19 19l-.9-2.1L16 16l2.1-.9z"/><path d="M5 13l.9 2.1L8 16l-2.1.9L5 19l-.9-2.1L2 16l2.1-.9z"/></svg>
+                Платформа №1 для студентов
+            </span>
+            <h1 class="hero-title">Найди <span class="highlight">партнёра</span><br>для учёбы</h1>
+            <p class="hero-description">Свайпай карточки студентов, находи тех, кто изучает те же предметы, и договаривайся о совместных занятиях. Учиться вместе — эффективнее!</p>
+            <div class="hero-buttons">
+                {% if current_user.is_authenticated %}
+                    {% if current_user.profile %}
+                        <a href="{{ url_for('tinder') }}" class="btn btn-primary">Начать поиск</a>
+                    {% else %}
+                        <a href="{{ url_for('create_profile') }}" class="btn btn-primary">Создать профиль</a>
+                    {% endif %}
+                {% else %}
+                    <a href="{{ url_for('register') }}" class="btn btn-primary">Начать поиск</a>
+                {% endif %}
+                <a href="#how-it-works" class="btn btn-hero-ghost">Узнать больше</a>
             </div>
-        {% else %}
-            <p class="hero-description">Создайте профиль студента и расскажите о себе, чтобы система подобрала идеальных партнеров для проектов, подготовки к экзаменам и разбора сложных тем.</p>
-            <div class="action-buttons hero-actions">
-                <a href="{{ url_for('create_profile') }}" class="btn btn-primary">Создать профиль</a>
-            </div>
-        {% endif %}
-    {% else %}
-        <p class="hero-description">Платформа помогает студентам находить единомышленников для совместного обучения, групповых проектов и продуктивных встреч. Присоединяйтесь, чтобы прокачать учебу вместе!</p>
-        <div class="action-buttons hero-actions">
-            <a href="{{ url_for('register') }}" class="btn btn-primary">Регистрация</a>
-            <a href="{{ url_for('login') }}" class="btn btn-secondary">Войти</a>
         </div>
-    {% endif %}
+        <div class="hero-col-right">
+            <div class="hero-image-wrap">
+                <img src="/static/scale_1200.jpg" alt="Студенты учатся вместе" class="hero-image" />
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="features-section" id="how-it-works">
+    <div class="features-inner">
+        <h2 class="features-title">Как это работает</h2>
+        <p class="features-subtitle">Простой и эффективный способ найти партнёра для учёбы</p>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon-box">
+                    <svg class="feature-icon-svg" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                </div>
+                <h3>Умный подбор</h3>
+                <p>Находим студентов с похожими предметами и целями</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon-box">
+                    <svg class="feature-icon-svg" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </div>
+                <h3>Мэтчи</h3>
+                <p>Взаимные лайки — начинайте учиться вместе</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon-box">
+                    <svg class="feature-icon-svg" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                </div>
+                <h3>Чат</h3>
+                <p>Общайтесь и договаривайтесь о совместных занятиях</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="cta-section">
+    <div class="cta-inner">
+        <div class="cta-card">
+            <h2>Готов найти партнёра для учёбы?</h2>
+            <p>Присоединяйся к тысячам студентов, которые уже учатся эффективнее вместе</p>
+            {% if current_user.is_authenticated %}
+                {% if current_user.profile %}
+                    <a href="{{ url_for('tinder') }}" class="btn btn-primary btn-cta">Начать поиск</a>
+                {% else %}
+                    <a href="{{ url_for('create_profile') }}" class="btn btn-primary btn-cta">Создать профиль</a>
+                {% endif %}
+            {% else %}
+                <a href="{{ url_for('register') }}" class="btn btn-primary btn-cta">Создать профиль</a>
+            {% endif %}
+        </div>
+    </div>
 </section>
 {% endblock %}

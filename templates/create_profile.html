@@ -1,203 +1,792 @@
 {% extends "base.html" %}
 
-{% block title %}Создание профиля - Tinder для учебы{% endblock %}
+{% block title %}Создание профиля - StudyTinder{% endblock %}
 
 {% block content %}
-<section class="card profile-form-card">
-    <h2>Создание профиля студента</h2>
-    <p class="form-description">Заполните анкету, чтобы найти партнера для совместной учебы</p>
-    
-    <form method="POST" enctype="multipart/form-data" class="profile-form">
-        {{ form.hidden_tag() }}
-        
-        <div class="form-section">
-            <h3>Основная информация</h3>
-            
-            <div class="form-group">
-                {{ form.full_name.label(class="form-label") }}
-                {{ form.full_name(class="form-input") }}
-                {% if form.full_name.errors %}
-                    <div class="form-errors">
-                        {% for error in form.full_name.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-            </div>
+<div class="profile-setup-wrap">
+  <!-- Progress Bar -->
+  <div class="ps-progress-bar-wrap" id="progressWrap">
+    <div class="ps-progress-header">
+      <span class="ps-step-label">Шаг <span id="stepLabel">1</span> из 4</span>
+      <span class="ps-step-pct" id="stepPct">25%</span>
+    </div>
+    <div class="ps-progress-track">
+      <div class="ps-progress-fill" id="progressFill" style="width:25%"></div>
+    </div>
+  </div>
 
-            <div class="form-row">
-                <div class="form-group">
-                    {{ form.university.label(class="form-label") }}
-                    {{ form.university(class="form-input") }}
-                    {% if form.university.errors %}
-                        <div class="form-errors">
-                            {% for error in form.university.errors %}
-                                <span class="error">{{ error }}</span>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
-                </div>
+  <!-- Card -->
+  <div class="ps-card" id="psCard">
+    <form method="POST" enctype="multipart/form-data" id="profileForm">
+      {{ form.hidden_tag() }}
 
-                <div class="form-group">
-                    {{ form.faculty.label(class="form-label") }}
-                    {{ form.faculty(class="form-input") }}
-                    {% if form.faculty.errors %}
-                        <div class="form-errors">
-                            {% for error in form.faculty.errors %}
-                                <span class="error">{{ error }}</span>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
-                </div>
-            </div>
-
-            <div class="form-group">
-                {{ form.course.label(class="form-label") }}
-                {{ form.course(class="form-select") }}
-                {% if form.course.errors %}
-                    <div class="form-errors">
-                        {% for error in form.course.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-            </div>
+      <!-- STEP 1: Basic Info -->
+      <div class="ps-step ps-step-active" id="step1">
+        <div class="ps-step-header">
+          <div class="ps-icon ps-icon-blue">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <div>
+            <h2 class="ps-title">Основная информация</h2>
+            <p class="ps-subtitle">Расскажите о себе</p>
+          </div>
         </div>
 
-        <div class="form-section">
-            <h3>Предметы и интересы</h3>
-            
-            <div class="form-group">
-                {{ form.subjects.label(class="form-label") }}
-                {{ form.subjects(class="form-textarea") }}
-                {% if form.subjects.errors %}
-                    <div class="form-errors">
-                        {% for error in form.subjects.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-            </div>
+        <div class="ps-fields">
+          <div class="ps-field-group">
+            <label class="ps-label">Как вас зовут? *</label>
+            {{ form.full_name(class="ps-input", placeholder="Введите ваше полное имя") }}
+            {% if form.full_name.errors %}
+              {% for err in form.full_name.errors %}<span class="ps-error">{{ err }}</span>{% endfor %}
+            {% endif %}
+          </div>
 
-            <div class="form-group">
-                {{ form.interests.label(class="form-label") }}
-                {{ form.interests(class="form-textarea") }}
-                {% if form.interests.errors %}
-                    <div class="form-errors">
-                        {% for error in form.interests.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-            </div>
+          <div class="ps-field-group">
+            <label class="ps-label">Сколько вам лет? *</label>
+            <input type="number" id="ageInput" name="_age_display" placeholder="18" min="16" max="99" class="ps-input" />
+            <small class="ps-hint">Используется только для отображения</small>
+          </div>
+
+          <div class="ps-field-group">
+            <label class="ps-label">Фото профиля</label>
+            <label class="ps-upload-area" id="uploadArea">
+              <div class="ps-upload-inner" id="uploadInner">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span class="ps-upload-text">Нажмите для загрузки</span>
+              </div>
+              <img id="photoPreview" class="ps-photo-preview" style="display:none" />
+              {{ form.photo(class="ps-input-file", id="photoInput", accept="image/*") }}
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 2: Education -->
+      <div class="ps-step" id="step2">
+        <div class="ps-step-header">
+          <div class="ps-icon ps-icon-purple">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+          </div>
+          <div>
+            <h2 class="ps-title">Образование</h2>
+            <p class="ps-subtitle">Где вы учитесь?</p>
+          </div>
         </div>
 
-        <div class="form-section">
-            <h3>О себе и целях</h3>
-            
-            <div class="form-group">
-                {{ form.description.label(class="form-label") }}
-                {{ form.description(class="form-textarea") }}
-                {% if form.description.errors %}
-                    <div class="form-errors">
-                        {% for error in form.description.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-            </div>
+        <div class="ps-fields">
+          <div class="ps-field-group">
+            <label class="ps-label">Университет *</label>
+            {{ form.university(class="ps-input", placeholder="МГУ, СПбГУ, МФТИ...") }}
+            {% if form.university.errors %}
+              {% for err in form.university.errors %}<span class="ps-error">{{ err }}</span>{% endfor %}
+            {% endif %}
+          </div>
 
-            <div class="form-group">
-                {{ form.goals.label(class="form-label") }}
-                {{ form.goals(class="form-textarea") }}
-                {% if form.goals.errors %}
-                    <div class="form-errors">
-                        {% for error in form.goals.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-            </div>
+          <div class="ps-field-group">
+            <label class="ps-label">Курс *</label>
+            {{ form.course(class="ps-select") }}
+            {% if form.course.errors %}
+              {% for err in form.course.errors %}<span class="ps-error">{{ err }}</span>{% endfor %}
+            {% endif %}
+          </div>
+
+          <div class="ps-field-group">
+            <label class="ps-label">Факультет *</label>
+            {{ form.faculty(class="ps-input", placeholder="Информационные технологии...") }}
+            {% if form.faculty.errors %}
+              {% for err in form.faculty.errors %}<span class="ps-error">{{ err }}</span>{% endfor %}
+            {% endif %}
+          </div>
+
+          <div class="ps-field-group">
+            <label class="ps-label">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              Город *
+            </label>
+            <input type="text" id="locationInput" name="_location" placeholder="Москва, Санкт-Петербург..." class="ps-input" />
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 3: Subjects -->
+      <div class="ps-step" id="step3">
+        <div class="ps-step-header">
+          <div class="ps-icon ps-icon-pink">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          </div>
+          <div>
+            <h2 class="ps-title">Предметы</h2>
+            <p class="ps-subtitle">Выберите предметы для изучения</p>
+          </div>
         </div>
 
-        <div class="form-section">
-            <h3>Предпочтения по партнеру</h3>
-            
-            <div class="form-group">
-                {{ form.preferred_subjects.label(class="form-label") }}
-                {{ form.preferred_subjects(class="form-textarea") }}
-                {% if form.preferred_subjects.errors %}
-                    <div class="form-errors">
-                        {% for error in form.preferred_subjects.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-            </div>
+        <!-- Hidden field for subjects -->
+        {{ form.subjects(class="ps-hidden-field", id="subjectsHidden") }}
 
-            <div class="form-group">
-                {{ form.preferred_course.label(class="form-label") }}
-                {{ form.preferred_course(class="form-select") }}
-                {% if form.preferred_course.errors %}
-                    <div class="form-errors">
-                        {% for error in form.preferred_course.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
+        <div class="ps-fields">
+          <div class="ps-field-group">
+            <label class="ps-label">Добавить свой предмет</label>
+            <div class="ps-subject-add-row">
+              <div class="ps-custom-input-wrap">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="ps-input-icon"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <input type="text" id="customSubjectInput" placeholder="Введите название предмета..." class="ps-input ps-input-with-icon" />
+              </div>
+              <button type="button" class="ps-add-btn" id="addSubjectBtn">Добавить</button>
             </div>
+            <p class="ps-hint">💡 Нажмите Enter или кнопку "Добавить"</p>
+          </div>
+
+          <div class="ps-selected-subjects-wrap" id="selectedWrap" style="display:none">
+            <div class="ps-subjects-meta">
+              <span class="ps-muted" id="selectedCount">Выбрано: 0</span>
+              <button type="button" class="ps-clear-btn" id="clearAllBtn">Очистить всё</button>
+            </div>
+            <p class="ps-label" style="margin-bottom:8px">Выбранные предметы:</p>
+            <div class="ps-tags-wrap" id="selectedSubjectTags"></div>
+          </div>
+
+          <div class="ps-field-group">
+            <p class="ps-label" style="margin-bottom:8px">Популярные предметы:</p>
+            <div class="ps-tags-wrap" id="popularSubjectTags">
+              <button type="button" class="ps-tag" data-subject="Высшая математика">Высшая математика</button>
+              <button type="button" class="ps-tag" data-subject="Программирование">Программирование</button>
+              <button type="button" class="ps-tag" data-subject="Физика">Физика</button>
+              <button type="button" class="ps-tag" data-subject="Химия">Химия</button>
+              <button type="button" class="ps-tag" data-subject="Английский язык">Английский язык</button>
+              <button type="button" class="ps-tag" data-subject="Алгоритмы">Алгоритмы</button>
+              <button type="button" class="ps-tag" data-subject="Базы данных">Базы данных</button>
+              <button type="button" class="ps-tag" data-subject="Экономика">Экономика</button>
+              <button type="button" class="ps-tag" data-subject="Статистика">Статистика</button>
+              <button type="button" class="ps-tag" data-subject="Machine Learning">Machine Learning</button>
+              <button type="button" class="ps-tag" data-subject="Маркетинг">Маркетинг</button>
+              <button type="button" class="ps-tag" data-subject="Финансы">Финансы</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STEP 4: Bio -->
+      <div class="ps-step" id="step4">
+        <div class="ps-step-header">
+          <div class="ps-icon ps-icon-blue">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <div>
+            <h2 class="ps-title">О себе</h2>
+            <p class="ps-subtitle">Расскажите, почему хотите найти партнёра</p>
+          </div>
         </div>
 
-        <div class="form-section">
-            <h3>Контактная информация</h3>
-            
-            <div class="form-row">
-                <div class="form-group">
-                    {{ form.telegram.label(class="form-label") }}
-                    {{ form.telegram(class="form-input") }}
-                    {% if form.telegram.errors %}
-                        <div class="form-errors">
-                            {% for error in form.telegram.errors %}
-                                <span class="error">{{ error }}</span>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
-                </div>
-
-                <div class="form-group">
-                    {{ form.discord.label(class="form-label") }}
-                    {{ form.discord(class="form-input") }}
-                    {% if form.discord.errors %}
-                        <div class="form-errors">
-                            {% for error in form.discord.errors %}
-                                <span class="error">{{ error }}</span>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
-                </div>
+        <div class="ps-fields">
+          <div class="ps-field-group">
+            <label class="ps-label">Биография * (минимум 20 символов)</label>
+            {{ form.description(class="ps-textarea", rows="6", id="bioTextarea", placeholder="Например: Готовлюсь к экзаменам по математике, ищу партнёра для совместных занятий по утрам. Предпочитаю библиотеку...") }}
+            <div class="ps-bio-meta">
+              <span class="ps-muted" id="bioCount">0 / 500</span>
+              <span class="ps-bio-ok" id="bioOk" style="display:none">✓ Отлично!</span>
             </div>
-        </div>
+          </div>
 
-        <div class="form-section">
-            <h3>Фото профиля</h3>
-            
-            <div class="form-group">
-                {{ form.photo.label(class="form-label") }}
-                {{ form.photo(class="form-file") }}
-                <div class="form-help">Загрузите фото профиля (JPG, PNG, GIF). Максимальный размер: 5MB</div>
-                {% if form.photo.errors %}
-                    <div class="form-errors">
-                        {% for error in form.photo.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-            </div>
-        </div>
+          <div class="ps-tip-box">
+            💡 <strong>Совет:</strong> Опишите свои цели, предпочитаемое время и место занятий. Это поможет найти идеального партнёра!
+          </div>
 
-        <div class="form-group">
-            {{ form.submit(class="btn btn-primary btn-full") }}
+          <!-- Hidden fields for extra data that has defaults -->
+          <input type="hidden" name="interests" value="учёба" />
+          <input type="hidden" name="goals" value="найти партнёра для учёбы" />
+          <input type="hidden" name="preferred_subjects" value="" />
+          <input type="hidden" name="preferred_course" value="any" />
+          <input type="hidden" name="telegram" value="" />
+          <input type="hidden" name="discord" value="" />
         </div>
+      </div>
+
+      <!-- Nav Buttons (always visible) -->
+      <div class="ps-nav-buttons">
+        <button type="button" class="ps-btn-back" id="backBtn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          Назад
+        </button>
+        <button type="button" class="ps-btn-next" id="nextBtn">
+          <span id="nextBtnText">Далее</span>
+          <svg id="nextBtnArrow" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </div>
     </form>
-</section>
+  </div>
+</div>
+
+<style>
+/* Profile Setup Styles */
+.profile-setup-wrap {
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 0 0 60px;
+}
+
+.ps-progress-bar-wrap {
+  margin-bottom: 28px;
+  animation: fadeInUp 0.5s ease both;
+}
+
+.ps-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.ps-step-label {
+  font-size: 0.875rem;
+  color: var(--color-muted);
+}
+
+.ps-step-pct {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.ps-progress-track {
+  height: 8px;
+  background: rgba(148, 163, 184, 0.15);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.ps-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+  border-radius: 999px;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ps-card {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 24px;
+  padding: 36px 40px;
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(22px);
+  animation: fadeInUp 0.6s ease both;
+}
+
+@media (max-width: 600px) {
+  .ps-card { padding: 24px 20px; }
+}
+
+/* Steps */
+.ps-step { display: none; animation: psSlideIn 0.35s ease both; }
+.ps-step-active { display: block; }
+
+@keyframes psSlideIn {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes psSlideOut {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-24px); }
+}
+
+.ps-step-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.ps-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ps-icon-blue  { background: rgba(59, 130, 246, 0.15); color: var(--color-primary); }
+.ps-icon-purple { background: rgba(139, 92, 246, 0.15); color: var(--color-secondary); }
+.ps-icon-pink  { background: rgba(236, 72, 153, 0.15); color: var(--color-accent); }
+
+.ps-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: var(--color-text);
+}
+
+.ps-subtitle {
+  font-size: 0.9rem;
+  color: var(--color-muted);
+  margin: 0;
+}
+
+/* Fields */
+.ps-fields { display: flex; flex-direction: column; gap: 20px; }
+
+.ps-field-group { display: flex; flex-direction: column; gap: 6px; }
+
+.ps-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.ps-input, .ps-select {
+  padding: 13px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: rgba(51, 65, 85, 0.3);
+  color: var(--color-text);
+  font-size: 15px;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ps-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 40px;
+}
+
+.ps-input:focus, .ps-select:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.ps-input::placeholder { color: var(--color-muted); }
+
+.ps-textarea {
+  padding: 13px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: rgba(51, 65, 85, 0.3);
+  color: var(--color-text);
+  font-size: 15px;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  font-family: inherit;
+}
+
+.ps-textarea:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.ps-textarea::placeholder { color: var(--color-muted); }
+
+/* Upload */
+.ps-upload-area {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 140px;
+  border: 2px dashed var(--color-border);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  overflow: hidden;
+  position: relative;
+}
+.ps-upload-area:hover { background: rgba(51, 65, 85, 0.3); border-color: rgba(59, 130, 246, 0.4); }
+
+.ps-upload-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-muted);
+}
+.ps-upload-text { font-size: 0.9rem; }
+
+.ps-input-file { display: none; }
+
+.ps-photo-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+}
+
+/* Subjects */
+.ps-subject-add-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.ps-custom-input-wrap {
+  position: relative;
+  flex: 1;
+}
+
+.ps-input-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-muted);
+  pointer-events: none;
+}
+
+.ps-input-with-icon {
+  padding-left: 42px !important;
+}
+
+.ps-add-btn {
+  padding: 0 20px;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+  color: white;
+  border: none;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s, box-shadow 0.2s;
+  white-space: nowrap;
+}
+.ps-add-btn:hover { opacity: 0.9; box-shadow: 0 8px 20px rgba(59, 130, 246, 0.35); }
+.ps-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.ps-hint { font-size: 0.8rem; color: var(--color-muted); margin: 0; }
+
+.ps-selected-subjects-wrap { margin-top: 4px; }
+
+.ps-subjects-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.ps-muted { font-size: 0.875rem; color: var(--color-muted); }
+
+.ps-clear-btn {
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  padding: 0;
+  transition: opacity 0.2s;
+}
+.ps-clear-btn:hover { opacity: 0.75; }
+
+.ps-tags-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-height: 290px;
+  overflow-y: auto;
+  padding-right: 4px;
+  margin-bottom: 12px;
+}
+
+.ps-tag {
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 2px solid var(--color-border);
+  background: rgba(51, 65, 85, 0.3);
+  color: var(--color-text);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ps-tag:hover { border-color: rgba(59, 130, 246, 0.5); background: rgba(59, 130, 246, 0.08); }
+.ps-tag.ps-tag-selected {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+.ps-tag.ps-tag-selected-dimmed {
+  background: rgba(51, 65, 85, 0.15);
+  border-color: rgba(59, 130, 246, 0.2);
+  color: var(--color-muted);
+  opacity: 0.6;
+}
+
+/* Bio */
+.ps-bio-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+}
+.ps-bio-ok { color: #4ade80; font-size: 0.875rem; font-weight: 500; }
+
+.ps-tip-box {
+  background: linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.1));
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 14px;
+  padding: 14px 18px;
+  font-size: 0.9rem;
+  color: var(--color-muted);
+  line-height: 1.5;
+}
+
+/* Navigation */
+.ps-nav-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.ps-btn-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 22px;
+  background: rgba(51, 65, 85, 0.3);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  color: var(--color-text);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.ps-btn-back:hover { background: rgba(51, 65, 85, 0.55); }
+
+.ps-btn-next {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 22px;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+  border: none;
+  border-radius: 14px;
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s, box-shadow 0.2s;
+  box-shadow: 0 10px 25px rgba(59, 130, 246, 0.35);
+}
+.ps-btn-next:hover { opacity: 0.93; box-shadow: 0 14px 32px rgba(59, 130, 246, 0.45); }
+.ps-btn-next:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+
+.ps-error { color: #f87171; font-size: 13px; }
+
+.ps-hidden-field { display: none; }
+</style>
+
+<script>
+(function() {
+  const totalSteps = 4;
+  let currentStep = 1;
+  let selectedSubjects = [];
+
+  const progressFill = document.getElementById('progressFill');
+  const stepLabel = document.getElementById('stepLabel');
+  const stepPct = document.getElementById('stepPct');
+  const progressWrap = document.getElementById('progressWrap');
+  const backBtn = document.getElementById('backBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  const nextBtnText = document.getElementById('nextBtnText');
+  const nextBtnArrow = document.getElementById('nextBtnArrow');
+  const profileForm = document.getElementById('profileForm');
+
+  function showStep(n) {
+    document.querySelectorAll('.ps-step').forEach(el => el.classList.remove('ps-step-active'));
+    document.getElementById('step' + n).classList.add('ps-step-active');
+
+    const pct = Math.round((n / totalSteps) * 100);
+    progressFill.style.width = pct + '%';
+    stepLabel.textContent = n;
+    stepPct.textContent = pct + '%';
+
+    if (n === 1) {
+      progressWrap.style.display = 'none';
+    } else {
+      progressWrap.style.display = 'block';
+    }
+
+    if (n === totalSteps) {
+      nextBtnText.textContent = 'Завершить';
+      nextBtnArrow.style.display = 'none';
+    } else {
+      nextBtnText.textContent = 'Далее';
+      nextBtnArrow.style.display = '';
+    }
+  }
+
+  function canProceed() {
+    if (currentStep === 1) {
+      const name = document.querySelector('[name="full_name"]').value.trim();
+      return name.length >= 2;
+    }
+    if (currentStep === 2) {
+      const uni = document.querySelector('[name="university"]').value.trim();
+      const course = document.querySelector('[name="course"]').value;
+      const faculty = document.querySelector('[name="faculty"]').value.trim();
+      return uni && course && faculty;
+    }
+    if (currentStep === 3) {
+      return selectedSubjects.length > 0;
+    }
+    if (currentStep === 4) {
+      const bio = document.querySelector('[name="description"]').value.trim();
+      return bio.length >= 20;
+    }
+    return false;
+  }
+
+  function updateNextBtn() {
+    nextBtn.disabled = !canProceed();
+  }
+
+  // Watch inputs for validation
+  document.querySelectorAll('.ps-input, .ps-select, .ps-textarea').forEach(el => {
+    el.addEventListener('input', updateNextBtn);
+    el.addEventListener('change', updateNextBtn);
+  });
+
+  // Photo preview
+  const photoInput = document.getElementById('photoInput');
+  const photoPreview = document.getElementById('photoPreview');
+  const uploadInner = document.getElementById('uploadInner');
+  photoInput.addEventListener('change', function() {
+    const file = this.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        photoPreview.src = e.target.result;
+        photoPreview.style.display = 'block';
+        uploadInner.style.display = 'none';
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+
+  // Bio counter
+  const bioTextarea = document.getElementById('bioTextarea');
+  const bioCount = document.getElementById('bioCount');
+  const bioOk = document.getElementById('bioOk');
+  bioTextarea.addEventListener('input', function() {
+    const len = this.value.length;
+    bioCount.textContent = len + ' / 500';
+    bioOk.style.display = len >= 20 ? '' : 'none';
+    updateNextBtn();
+  });
+
+  // Subjects
+  const subjectsHidden = document.getElementById('subjectsHidden');
+  const selectedSubjectTags = document.getElementById('selectedSubjectTags');
+  const selectedWrap = document.getElementById('selectedWrap');
+  const selectedCount = document.getElementById('selectedCount');
+  const popularSubjectTags = document.getElementById('popularSubjectTags');
+  const customSubjectInput = document.getElementById('customSubjectInput');
+  const addSubjectBtn = document.getElementById('addSubjectBtn');
+  const clearAllBtn = document.getElementById('clearAllBtn');
+
+  function syncSubjects() {
+    subjectsHidden.value = selectedSubjects.join(', ');
+    selectedCount.textContent = 'Выбрано: ' + selectedSubjects.length;
+
+    if (selectedSubjects.length > 0) {
+      selectedWrap.style.display = 'block';
+      selectedSubjectTags.innerHTML = '';
+      selectedSubjects.forEach(subj => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ps-tag ps-tag-selected';
+        btn.innerHTML = subj + ' <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+        btn.addEventListener('click', () => toggleSubject(subj));
+        selectedSubjectTags.appendChild(btn);
+      });
+    } else {
+      selectedWrap.style.display = 'none';
+    }
+
+    // Update popular tags
+    document.querySelectorAll('#popularSubjectTags .ps-tag').forEach(btn => {
+      const subj = btn.dataset.subject;
+      if (selectedSubjects.includes(subj)) {
+        btn.classList.add('ps-tag-selected-dimmed');
+        btn.innerHTML = subj + ' <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+      } else {
+        btn.classList.remove('ps-tag-selected-dimmed');
+        btn.textContent = subj;
+      }
+    });
+
+    updateNextBtn();
+  }
+
+  function toggleSubject(subj) {
+    const idx = selectedSubjects.indexOf(subj);
+    if (idx >= 0) {
+      selectedSubjects.splice(idx, 1);
+    } else {
+      selectedSubjects.push(subj);
+    }
+    syncSubjects();
+  }
+
+  document.querySelectorAll('#popularSubjectTags .ps-tag').forEach(btn => {
+    btn.addEventListener('click', () => toggleSubject(btn.dataset.subject));
+  });
+
+  function addCustomSubject() {
+    const val = customSubjectInput.value.trim();
+    if (val && !selectedSubjects.includes(val)) {
+      selectedSubjects.push(val);
+      customSubjectInput.value = '';
+      syncSubjects();
+    }
+  }
+
+  addSubjectBtn.addEventListener('click', addCustomSubject);
+  customSubjectInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); addCustomSubject(); }
+  });
+
+  clearAllBtn.addEventListener('click', () => {
+    selectedSubjects = [];
+    syncSubjects();
+  });
+
+  // Navigation
+  backBtn.addEventListener('click', () => {
+    if (currentStep > 1) {
+      currentStep--;
+      showStep(currentStep);
+      updateNextBtn();
+    } else {
+      window.location.href = '/';
+    }
+  });
+
+  nextBtn.addEventListener('click', () => {
+    if (!canProceed()) return;
+    if (currentStep < totalSteps) {
+      currentStep++;
+      showStep(currentStep);
+      updateNextBtn();
+    } else {
+      // Submit the form
+      profileForm.submit();
+    }
+  });
+
+  // Init
+  showStep(1);
+  updateNextBtn();
+})();
+</script>
 {% endblock %}

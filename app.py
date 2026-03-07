@@ -592,18 +592,79 @@ def matches():
         (Match.user1_id == current_user.id) | (Match.user2_id == current_user.id)
     ).all()
     
-    # Получаем профили мэтчей
+    # Получаем профили мэтчей + краткую информацию по переписке
     match_profiles = []
     for match in user_matches:
         other_user_id = match.user2_id if match.user1_id == current_user.id else match.user1_id
         other_profile = StudentProfile.query.filter_by(user_id=other_user_id).first()
         if other_profile:
+            # Последнее сообщение в чате с этим пользователем
+            last_message = Message.query.filter(
+                ((Message.sender_id == current_user.id) & (Message.receiver_id == other_user_id)) |
+                ((Message.sender_id == other_user_id) & (Message.receiver_id == current_user.id))
+            ).order_by(Message.created_at.desc()).first()
+
+            # Есть ли непрочитанные сообщения от собеседника
+            has_unread = Message.query.filter(
+                Message.sender_id == other_user_id,
+                Message.receiver_id == current_user.id,
+                Message.is_read == False
+            ).count() > 0
+
             match_profiles.append({
                 'profile': other_profile,
-                'match_date': match.created_at
+                'match_date': match.created_at,
+                'last_message': last_message.content if last_message else None,
+                'last_message_time': last_message.created_at.strftime('%H:%M') if last_message else None,
+                'has_unread': has_unread
             })
     
-    return render_template('matches.html', matches=match_profiles)
+    # Количество мэтчей с непрочитанными сообщениями
+    new_matches_count = sum(1 for m in match_profiles if m['has_unread'])
+    
+    return render_template('matches.html', matches=match_profiles, new_matches_count=new_matches_count)
+
+
+@app.route('/likes')
+@login_required
+def likes():
+    """Список пользователей, которые поставили лайк текущему пользователю"""
+    if not current_user.profile:
+        flash('Сначала создайте профиль.', 'info')
+        return redirect(url_for('create_profile'))
+
+    # Входящие лайки
+    likes_query = (
+        db.session.query(Like, User, StudentProfile)
+        .join(User, User.id == Like.liker_id)
+        .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
+        .filter(Like.liked_id == current_user.id, Like.is_like == True)
+        .order_by(Like.created_at.desc())
+        .all()
+    )
+
+    likes_data = []
+    for like, user, profile in likes_query:
+        # Проверяем, стал ли лайк взаимным (есть ли уже мэтч)
+        is_match = db.session.query(Match).filter(
+            ((Match.user1_id == current_user.id) & (Match.user2_id == user.id)) |
+            ((Match.user1_id == user.id) & (Match.user2_id == current_user.id))
+        ).first() is not None
+
+        # Показываем здесь только невзаимные лайки
+        if is_match:
+            continue
+
+        likes_data.append(
+            {
+                'user': user,
+                'profile': profile,
+                'created_at': like.created_at,
+                'is_match': is_match,
+            }
+        )
+
+    return render_template('likes.html', likes=likes_data)
 
 @app.route('/chat/<int:user_id>')
 @login_required

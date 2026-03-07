@@ -1,0 +1,336 @@
+{% extends "base.html" %}
+
+{% block title %}Кто поставил вам лайк - StudyTinder{% endblock %}
+
+{% block content %}
+<div class="tinder-container discover-page">
+    {% if likes %}
+        {% set item = likes[0] %}
+        <div class="tinder-header">
+            <h1>Кто поставил вам лайк</h1>
+            <p>Просматривайте входящие лайки и решайте, ставить ли лайк в ответ.</p>
+        </div>
+
+        <div class="tinder-card-container">
+            <div class="tinder-card discover-card" data-profile-id="{{ item.profile.id }}">
+                <div class="card-photo">
+                    {% if item.profile and item.profile.photo_filename %}
+                        <img src="{{ url_for('uploaded_file', filename=item.profile.photo_filename) }}" alt="{{ item.profile.full_name }}" class="profile-photo">
+                    {% else %}
+                        <div class="no-photo">
+                            <span class="no-photo-icon">👤</span>
+                        </div>
+                    {% endif %}
+                    <div class="card-photo-overlay"></div>
+                </div>
+                
+                <div class="card-info discover-info">
+                    <div class="card-header">
+                        <h2>{{ item.profile.full_name }}</h2>
+                        <div class="card-meta">
+                            <span class="course-badge">{{ item.profile.course }} курс</span>
+                            <span class="university">{{ item.profile.university }}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="card-details">
+                        {% if item.profile.subjects %}
+                        <div class="detail-section">
+                            <h4>Предметы</h4>
+                            <div class="tags">
+                                {% for subject in item.profile.subjects.split(',') %}
+                                    <span class="tag">{{ subject.strip() }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        {% if item.profile.interests %}
+                        <div class="detail-section">
+                            <h4>Интересы</h4>
+                            <div class="tags">
+                                {% for interest in item.profile.interests.split(',') %}
+                                    <span class="tag tag-interest">{{ interest.strip() }}</span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="tinder-actions discover-actions">
+            <button class="btn-dislike discover-btn" onclick="likesDislike({{ item.profile.id }});" aria-label="Дизлайк">
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <button class="btn-like discover-btn" onclick="likesLike({{ item.profile.id }});" aria-label="Лайк">
+                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            </button>
+        </div>
+    {% else %}
+        <div class="no-more-profiles">
+            <div class="card no-profiles-card">
+                <div class="no-profiles-icon">✨</div>
+                <h2>Пока нет входящих лайков</h2>
+                <p>Продолжайте свайпать профили, чтобы вас замечали другие студенты.</p>
+                <div class="tinder-actions">
+                    <a href="{{ url_for('tinder') }}" class="btn btn-primary">Перейти к поиску</a>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+function likesLike(profileId) {
+    fetch(`/like/${profileId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('Ошибка: ' + (data.error || 'не удалось поставить лайк'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Произошла ошибка при отправке лайка');
+    });
+}
+
+function likesDislike(profileId) {
+    fetch(`/dislike/${profileId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert('Ошибка: ' + (data.error || 'не удалось отправить дизлайк'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Произошла ошибка при отправке дизлайка');
+    });
+}
+</script>
+
+<style>
+/* Берём те же стили контейнера и карточки, что и на странице поиска (tinder.html) */
+.tinder-container {
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 5rem;
+    min-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+}
+
+.tinder-header {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.tinder-header h1 {
+    margin: 0 0 0.5rem;
+    font-size: 1.75rem;
+    color: var(--color-foreground);
+}
+
+.tinder-header p {
+    margin: 0;
+    color: var(--color-muted);
+}
+
+.tinder-card-container {
+    position: relative;
+    height: 600px;
+    margin-bottom: 1.5rem;
+}
+
+.tinder-card {
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+    border-radius: var(--radius-xl);
+    background: var(--color-card);
+    backdrop-filter: blur(22px);
+    border: 1px solid var(--color-border);
+    box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+}
+
+.card-photo {
+    height: 400px;
+    overflow: hidden;
+    position: relative;
+}
+
+.card-photo-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, var(--color-bg) 0%, var(--color-bg) 20%, transparent 60%);
+}
+
+.profile-photo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.no-photo {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.no-photo-icon {
+    font-size: 4rem;
+    opacity: 0.8;
+}
+
+.discover-info {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 1.5rem;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.card-header h2 {
+    margin: 0 0 0.5rem;
+    color: var(--color-foreground);
+    font-size: 1.5rem;
+}
+
+.card-meta {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.course-badge {
+    background: rgba(59,130,246,0.2);
+    color: var(--color-primary);
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.875rem;
+    border: 1px solid rgba(59,130,246,0.35);
+}
+
+.university {
+    color: var(--color-muted);
+    font-size: 0.875rem;
+}
+
+.detail-section h4 {
+    margin: 0 0 0.25rem;
+    color: var(--color-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.tag {
+    background: rgba(59,130,246,0.15);
+    color: var(--color-primary);
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    border: 1px solid rgba(59,130,246,0.25);
+}
+
+.tag-interest {
+    background: rgba(139,92,246,0.15);
+    color: var(--color-secondary);
+    border-color: rgba(139,92,246,0.25);
+}
+
+.tinder-actions {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1.5rem;
+    margin-top: 0.5rem;
+}
+
+.discover-actions .btn-like,
+.discover-actions .btn-dislike {
+    width: auto;
+    height: auto;
+    padding: 0;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.discover-actions .btn-dislike {
+    width: 64px;
+    height: 64px;
+    background: var(--color-card);
+    border: 2px solid rgba(239,68,68,0.5);
+    color: var(--color-destructive);
+    backdrop-filter: blur(12px);
+}
+
+.discover-actions .btn-dislike:hover {
+    background: rgba(239,68,68,0.15);
+    transform: scale(1.1);
+}
+
+.discover-actions .btn-like {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+    color: white;
+    box-shadow: 0 20px 40px rgba(59,130,246,0.4);
+}
+
+.discover-actions .btn-like:hover {
+    transform: scale(1.1);
+    box-shadow: 0 25px 50px rgba(59,130,246,0.5);
+}
+
+@media (max-width: 480px) {
+    .tinder-container {
+        padding: 1rem 0.75rem 5rem;
+    }
+    
+    .tinder-card-container {
+        height: 520px;
+    }
+    
+    .card-photo {
+        height: 320px;
+    }
+}
+</style>
+
+{% endblock %}
+
