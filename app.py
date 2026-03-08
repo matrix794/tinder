@@ -7,10 +7,25 @@ from wtforms import StringField, PasswordField, SubmitField, TextAreaField, Sele
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import os
+import re
+from secrets import token_urlsafe
 from datetime import datetime
 from functools import wraps
 from PIL import Image
-from sqlalchemy import or_
+from sqlalchemy import or_, func
+
+try:
+    from authlib.integrations.flask_client import OAuth
+except Exception:
+    OAuth = None
+
+try:
+    from dotenv import load_dotenv
+except Exception:
+    load_dotenv = None
+
+if load_dotenv:
+    load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
@@ -48,6 +63,36 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 login_manager.login_message = 'Пожалуйста, войдите в систему для доступа к этой странице.'
+
+# OAuth (Google / GitHub)
+app.config['GOOGLE_CLIENT_ID'] = os.environ.get('GOOGLE_CLIENT_ID')
+app.config['GOOGLE_CLIENT_SECRET'] = os.environ.get('GOOGLE_CLIENT_SECRET')
+app.config['GITHUB_CLIENT_ID'] = os.environ.get('GITHUB_CLIENT_ID')
+app.config['GITHUB_CLIENT_SECRET'] = os.environ.get('GITHUB_CLIENT_SECRET')
+app.config['GOOGLE_CALLBACK_URL'] = os.environ.get('GOOGLE_CALLBACK_URL', 'http://localhost:5000/auth/google/callback')
+app.config['GITHUB_CALLBACK_URL'] = os.environ.get('GITHUB_CALLBACK_URL', 'http://localhost:5000/auth/github/callback')
+
+oauth = OAuth(app) if OAuth else None
+google_oauth = None
+github_oauth = None
+
+if oauth:
+    google_oauth = oauth.register(
+        name='google',
+        client_id=app.config.get('GOOGLE_CLIENT_ID'),
+        client_secret=app.config.get('GOOGLE_CLIENT_SECRET'),
+        server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+        client_kwargs={'scope': 'openid email profile'},
+    )
+    github_oauth = oauth.register(
+        name='github',
+        client_id=app.config.get('GITHUB_CLIENT_ID'),
+        client_secret=app.config.get('GITHUB_CLIENT_SECRET'),
+        access_token_url='https://github.com/login/oauth/access_token',
+        authorize_url='https://github.com/login/oauth/authorize',
+        api_base_url='https://api.github.com/',
+        client_kwargs={'scope': 'read:user user:email'},
+    )
 
 # Модель пользователя
 class User(UserMixin, db.Model):
@@ -145,14 +190,14 @@ class Message(db.Model):
 
 # Формы
 class RegistrationForm(FlaskForm):
-    username = StringField('Имя пользователя', validators=[validators.DataRequired(), validators.Length(min=4, max=20)])
+    username = StringField('Имя', validators=[validators.DataRequired(), validators.Length(min=2, max=50)])
     email = StringField('Email', validators=[validators.DataRequired(), validators.Email()])
     password = PasswordField('Пароль', validators=[validators.DataRequired(), validators.Length(min=6)])
     password2 = PasswordField('Повторите пароль', validators=[validators.DataRequired(), validators.EqualTo('password')])
     submit = SubmitField('Зарегистрироваться')
 
 class LoginForm(FlaskForm):
-    username = StringField('Имя пользователя', validators=[validators.DataRequired()])
+    username = StringField('Email или имя пользователя', validators=[validators.DataRequired()])
     password = PasswordField('Пароль', validators=[validators.DataRequired()])
     submit = SubmitField('Войти')
 
@@ -207,6 +252,56 @@ def inject_role_flags():
     return {
         'current_user_is_admin': current_user.is_authenticated and is_admin(current_user)
     }
+
+
+def is_oauth_provider_enabled(provider):
+    if not oauth:
+        return False
+    if provider == 'google':
+        return bool(google_oauth and app.config.get('GOOGLE_CLIENT_ID') and app.config.get('GOOGLE_CLIENT_SECRET'))
+    if provider == 'github':
+        return bool(github_oauth and app.config.get('GITHUB_CLIENT_ID') and app.config.get('GITHUB_CLIENT_SECRET'))
+    return False
+
+
+def normalize_email(value):
+    return (value or '').strip().lower()
+
+
+def find_user_by_email(email):
+    normalized = normalize_email(email)
+    if not normalized:
+        return None
+    return User.query.filter(func.lower(User.email) == normalized).first()
+
+
+def generate_unique_username(seed):
+    base = re.sub(r'[^a-zA-Z0-9_]+', '_', (seed or '').strip().lower()).strip('_')
+    if not base:
+        base = 'student'
+    base = base[:40]
+    candidate = base
+    counter = 1
+    while User.query.filter_by(username=candidate).first():
+        suffix = f"_{counter}"
+        trimmed = base[: max(1, 50 - len(suffix))]
+        candidate = f"{trimmed}{suffix}"
+        counter += 1
+    return candidate
+
+
+def get_or_create_oauth_user(email, username_hint):
+    normalized_email = normalize_email(email)
+    user = find_user_by_email(normalized_email)
+    if user:
+        return user, False
+
+    username = generate_unique_username(username_hint or normalized_email.split('@')[0])
+    user = User(username=username, email=normalized_email)
+    user.set_password(token_urlsafe(32))
+    db.session.add(user)
+    db.session.commit()
+    return user, True
 
 # Функции для работы с файлами
 def allowed_file(filename):
@@ -312,7 +407,11 @@ def login():
     
     form = LoginForm()
     if form.validate_on_submit():
-        user = User.query.filter_by(username=form.username.data).first()
+        identifier = form.username.data.strip()
+        if '@' in identifier:
+            user = User.query.filter_by(email=identifier).first()
+        else:
+            user = User.query.filter_by(username=identifier).first()
         
         if user and user.check_password(form.password.data):
             login_user(user)
@@ -323,6 +422,120 @@ def login():
             flash('Неверное имя пользователя или пароль', 'error')
     
     return render_template('login.html', form=form)
+
+
+@app.route('/auth/google')
+def auth_google():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    if not is_oauth_provider_enabled('google'):
+        flash('Вход через Google пока не настроен. Обратитесь к администратору.', 'info')
+        return redirect(url_for('login'))
+
+    try:
+        redirect_uri = app.config.get('GOOGLE_CALLBACK_URL') or url_for('auth_google_callback', _external=True)
+        return google_oauth.authorize_redirect(redirect_uri)
+    except Exception as e:
+        print(f"Google OAuth start error: {e}")
+        flash('Не удалось начать вход через Google. Попробуйте позже.', 'error')
+        return redirect(url_for('login'))
+
+
+@app.route('/auth/google/callback')
+def auth_google_callback():
+    if not is_oauth_provider_enabled('google'):
+        flash('Вход через Google пока не настроен.', 'info')
+        return redirect(url_for('login'))
+
+    try:
+        token = google_oauth.authorize_access_token()
+        user_info = token.get('userinfo')
+        if not user_info:
+            user_info = google_oauth.get('userinfo').json()
+    except Exception as e:
+        print(f"Google OAuth callback error: {e}")
+        flash('Ошибка авторизации через Google.', 'error')
+        return redirect(url_for('login'))
+
+    email = normalize_email((user_info or {}).get('email'))
+    email_verified = (user_info or {}).get('email_verified')
+    if not email:
+        flash('Google не вернул email. Проверьте настройки аккаунта.', 'error')
+        return redirect(url_for('login'))
+    if email_verified is False:
+        flash('Подтвердите email в Google и попробуйте снова.', 'error')
+        return redirect(url_for('login'))
+
+    username_hint = (user_info or {}).get('name') or (user_info or {}).get('given_name') or email.split('@')[0]
+    user, created = get_or_create_oauth_user(email, username_hint)
+    login_user(user)
+    flash('Аккаунт создан через Google.' if created else 'Вы успешно вошли через Google.', 'success')
+    return redirect(url_for('index'))
+
+
+@app.route('/auth/github')
+def auth_github():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    if not is_oauth_provider_enabled('github'):
+        flash('Вход через GitHub пока не настроен. Обратитесь к администратору.', 'info')
+        return redirect(url_for('login'))
+
+    try:
+        redirect_uri = app.config.get('GITHUB_CALLBACK_URL') or url_for('auth_github_callback', _external=True)
+        return github_oauth.authorize_redirect(redirect_uri)
+    except Exception as e:
+        print(f"GitHub OAuth start error: {e}")
+        flash('Не удалось начать вход через GitHub. Попробуйте позже.', 'error')
+        return redirect(url_for('login'))
+
+
+@app.route('/auth/github/callback')
+def auth_github_callback():
+    if not is_oauth_provider_enabled('github'):
+        flash('Вход через GitHub пока не настроен.', 'info')
+        return redirect(url_for('login'))
+
+    try:
+        github_oauth.authorize_access_token()
+        profile = github_oauth.get('user').json()
+    except Exception as e:
+        print(f"GitHub OAuth callback error: {e}")
+        flash('Ошибка авторизации через GitHub.', 'error')
+        return redirect(url_for('login'))
+
+    email = normalize_email((profile or {}).get('email'))
+    if not email:
+        try:
+            emails = github_oauth.get('user/emails').json()
+            if isinstance(emails, list):
+                chosen = None
+                for item in emails:
+                    if item.get('email') and item.get('verified') and item.get('primary'):
+                        chosen = item.get('email')
+                        break
+                if not chosen:
+                    for item in emails:
+                        if item.get('email') and item.get('verified'):
+                            chosen = item.get('email')
+                            break
+                if not chosen and emails:
+                    chosen = emails[0].get('email')
+                email = normalize_email(chosen)
+        except Exception as e:
+            print(f"GitHub email fetch error: {e}")
+
+    if not email:
+        flash('GitHub не вернул email. Включите публичный email или подтверждённый primary email.', 'error')
+        return redirect(url_for('login'))
+
+    username_hint = (profile or {}).get('login') or (profile or {}).get('name') or email.split('@')[0]
+    user, created = get_or_create_oauth_user(email, username_hint)
+    login_user(user)
+    flash('Аккаунт создан через GitHub.' if created else 'Вы успешно вошли через GitHub.', 'success')
+    return redirect(url_for('index'))
 
 @app.route('/logout')
 @login_required
@@ -1000,5 +1213,3 @@ if __name__ == "__main__":
     with app.app_context():
         db.create_all()
     app.run(host="127.0.0.1", port=5000, debug=True)
-
-
