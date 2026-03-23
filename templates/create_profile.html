@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros/forms.html" import field_errors %}
 
 {% block title %}Создание профиля - StudyTinder{% endblock %}
 
@@ -7,11 +8,11 @@
   <!-- Progress Bar -->
   <div class="ps-progress-bar-wrap" id="progressWrap">
     <div class="ps-progress-header">
-      <span class="ps-step-label">Шаг <span id="stepLabel">1</span> из 4</span>
+      <span class="ps-step-label">Шаг <span id="stepLabel">1</span> из 5</span>
       <span class="ps-step-pct" id="stepPct">25%</span>
     </div>
     <div class="ps-progress-track">
-      <div class="ps-progress-fill" id="progressFill" style="width:25%"></div>
+      <div class="ps-progress-fill" id="progressFill" style="width:20%"></div>
     </div>
   </div>
 
@@ -36,9 +37,7 @@
           <div class="ps-field-group">
             <label class="ps-label">Как вас зовут? *</label>
             {{ form.full_name(class="ps-input", placeholder="Введите ваше полное имя") }}
-            {% if form.full_name.errors %}
-              {% for err in form.full_name.errors %}<span class="ps-error">{{ err }}</span>{% endfor %}
-            {% endif %}
+            {{ field_errors(form.full_name) }}
           </div>
 
           <div class="ps-field-group">
@@ -57,6 +56,7 @@
               <img id="photoPreview" class="ps-photo-preview" style="display:none" />
               {{ form.photo(class="ps-input-file", id="photoInput", accept="image/*") }}
             </label>
+            {{ field_errors(form.photo) }}
           </div>
         </div>
       </div>
@@ -77,33 +77,28 @@
           <div class="ps-field-group">
             <label class="ps-label">Университет *</label>
             {{ form.university(class="ps-input", placeholder="МГУ, СПбГУ, МФТИ...") }}
-            {% if form.university.errors %}
-              {% for err in form.university.errors %}<span class="ps-error">{{ err }}</span>{% endfor %}
-            {% endif %}
+            {{ field_errors(form.university) }}
           </div>
 
           <div class="ps-field-group">
             <label class="ps-label">Курс *</label>
             {{ form.course(class="ps-select") }}
-            {% if form.course.errors %}
-              {% for err in form.course.errors %}<span class="ps-error">{{ err }}</span>{% endfor %}
-            {% endif %}
+            {{ field_errors(form.course) }}
           </div>
 
           <div class="ps-field-group">
             <label class="ps-label">Факультет *</label>
             {{ form.faculty(class="ps-input", placeholder="Информационные технологии...") }}
-            {% if form.faculty.errors %}
-              {% for err in form.faculty.errors %}<span class="ps-error">{{ err }}</span>{% endfor %}
-            {% endif %}
+            {{ field_errors(form.faculty) }}
           </div>
 
           <div class="ps-field-group">
-            <label class="ps-label">
+            <label class="ps-label" for="cityInput">
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-              Город *
+              Город
             </label>
-            <input type="text" id="locationInput" name="_location" placeholder="Москва, Санкт-Петербург..." class="ps-input" />
+            {{ form.city(class="ps-input", id="cityInput", placeholder="Москва, Санкт-Петербург...") }}
+            {{ field_errors(form.city) }}
           </div>
         </div>
       </div>
@@ -134,6 +129,7 @@
               <button type="button" class="ps-add-btn" id="addSubjectBtn">Добавить</button>
             </div>
             <p class="ps-hint">💡 Нажмите Enter или кнопку "Добавить"</p>
+            {{ field_errors(form.subjects) }}
           </div>
 
           <div class="ps-selected-subjects-wrap" id="selectedWrap" style="display:none">
@@ -147,7 +143,7 @@
 
           <div class="ps-field-group">
             <p class="ps-label" style="margin-bottom:8px">Популярные предметы:</p>
-            <div class="ps-tags-wrap" id="popularSubjectTags">
+            <div class="ps-tags-wrap ps-tags-collapsible" id="popularSubjectTags">
               <button type="button" class="ps-tag" data-subject="Высшая математика">Высшая математика</button>
               <button type="button" class="ps-tag" data-subject="Программирование">Программирование</button>
               <button type="button" class="ps-tag" data-subject="Физика">Физика</button>
@@ -156,10 +152,40 @@
               <button type="button" class="ps-tag" data-subject="Алгоритмы">Алгоритмы</button>
               <button type="button" class="ps-tag" data-subject="Базы данных">Базы данных</button>
               <button type="button" class="ps-tag" data-subject="Экономика">Экономика</button>
-              <button type="button" class="ps-tag" data-subject="Статистика">Статистика</button>
-              <button type="button" class="ps-tag" data-subject="Machine Learning">Machine Learning</button>
-              <button type="button" class="ps-tag" data-subject="Маркетинг">Маркетинг</button>
-              <button type="button" class="ps-tag" data-subject="Финансы">Финансы</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Статистика">Статистика</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Machine Learning">Machine Learning</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Маркетинг">Маркетинг</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Финансы">Финансы</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Линейная алгебра">Линейная алгебра</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Дискретная математика">Дискретная математика</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Теория вероятностей">Теория вероятностей</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Информатика">Информатика</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Веб-разработка">Веб-разработка</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Data Science">Data Science</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Философия">Философия</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="История">История</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Биология">Биология</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Право">Право</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Психология">Психология</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Менеджмент">Менеджмент</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Иностранные языки">Иностранные языки</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Экология">Экология</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Медицина">Медицина</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Журналистика">Журналистика</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Дизайн">Дизайн</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="География">География</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Социология">Социология</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Культурология">Культурология</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Политология">Политология</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Искусствоведение">Искусствоведение</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Радиофизика">Радиофизика</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Биоинформатика">Биоинформатика</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Астрономия">Астрономия</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Робототехника">Робототехника</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Микроэкономика">Микроэкономика</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Макроэкономика">Макроэкономика</button>
+              
+              <button type="button" class="ps-tags-toggle" data-target="popularSubjectTags">Ещё <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>
             </div>
           </div>
         </div>
@@ -185,6 +211,7 @@
               <span class="ps-muted" id="bioCount">0 / 500</span>
               <span class="ps-bio-ok" id="bioOk" style="display:none">✓ Отлично!</span>
             </div>
+            {{ field_errors(form.description) }}
           </div>
 
           <div class="ps-tip-box">
@@ -194,10 +221,121 @@
           <!-- Hidden fields for extra data that has defaults -->
           <input type="hidden" name="interests" value="учёба" />
           <input type="hidden" name="goals" value="найти партнёра для учёбы" />
-          <input type="hidden" name="preferred_subjects" value="" />
-          <input type="hidden" name="preferred_course" value="any" />
           <input type="hidden" name="telegram" value="" />
           <input type="hidden" name="discord" value="" />
+          {{ field_errors(form.interests) }}
+          {{ field_errors(form.goals) }}
+        </div>
+      </div>
+
+      <!-- STEP 5: Search Preferences -->
+      <div class="ps-step" id="step5">
+        <div class="ps-step-header">
+          <div class="ps-icon ps-icon-purple">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </div>
+          <div>
+            <h2 class="ps-title">Предпочтения поиска</h2>
+            <p class="ps-subtitle">Кого хотите видеть в ленте?</p>
+          </div>
+        </div>
+
+        <div class="ps-fields">
+          <div class="ps-field-group">
+            <label class="ps-label">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              Город партнёра
+            </label>
+            {{ form.preferred_city(class="ps-input", placeholder="Москва, Санкт-Петербург...") }}
+            <small class="ps-hint">Оставьте пустым, чтобы видеть всех</small>
+            {{ field_errors(form.preferred_city) }}
+          </div>
+
+          <div class="ps-field-group">
+            <label class="ps-label">Курс партнёра</label>
+            {{ form.preferred_course(class="ps-select") }}
+            {{ field_errors(form.preferred_course) }}
+          </div>
+
+          <!-- Hidden field for preferred subjects -->
+          {{ form.preferred_subjects(class="ps-hidden-field", id="prefSubjectsHidden") }}
+          <div class="ps-field-group">
+            <label class="ps-label">Предметы у партнёра</label>
+            <div class="ps-subject-add-row">
+              <div class="ps-custom-input-wrap">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="ps-input-icon"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <input type="text" id="prefCustomSubjectInput" placeholder="Введите название предмета..." class="ps-input ps-input-with-icon" />
+              </div>
+              <button type="button" class="ps-add-btn" id="prefAddSubjectBtn">Добавить</button>
+            </div>
+            <p class="ps-hint">💡 Нажмите Enter или кнопку "Добавить". Оставьте пустым — видеть все предметы.</p>
+            {{ field_errors(form.preferred_subjects) }}
+          </div>
+
+          <div class="ps-selected-subjects-wrap" id="prefSelectedWrap" style="display:none">
+            <div class="ps-subjects-meta">
+              <span class="ps-muted" id="prefSelectedCount">Выбрано: 0</span>
+              <button type="button" class="ps-clear-btn" id="prefClearAllBtn">Очистить всё</button>
+            </div>
+            <p class="ps-label" style="margin-bottom:8px">Выбранные предметы:</p>
+            <div class="ps-tags-wrap" id="prefSelectedSubjectTags"></div>
+          </div>
+
+          <div class="ps-field-group">
+            <p class="ps-label" style="margin-bottom:8px">Популярные предметы:</p>
+            <div class="ps-tags-wrap ps-tags-collapsible" id="prefPopularSubjectTags">
+              <button type="button" class="ps-tag" data-subject="Высшая математика">Высшая математика</button>
+              <button type="button" class="ps-tag" data-subject="Программирование">Программирование</button>
+              <button type="button" class="ps-tag" data-subject="Физика">Физика</button>
+              <button type="button" class="ps-tag" data-subject="Химия">Химия</button>
+              <button type="button" class="ps-tag" data-subject="Английский язык">Английский язык</button>
+              <button type="button" class="ps-tag" data-subject="Алгоритмы">Алгоритмы</button>
+              <button type="button" class="ps-tag" data-subject="Базы данных">Базы данных</button>
+              <button type="button" class="ps-tag" data-subject="Экономика">Экономика</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Статистика">Статистика</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Machine Learning">Machine Learning</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Маркетинг">Маркетинг</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Финансы">Финансы</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Линейная алгебра">Линейная алгебра</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Дискретная математика">Дискретная математика</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Теория вероятностей">Теория вероятностей</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Информатика">Информатика</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Веб-разработка">Веб-разработка</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Data Science">Data Science</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Философия">Философия</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="История">История</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Биология">Биология</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Право">Право</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Психология">Психология</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Менеджмент">Менеджмент</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Иностранные языки">Иностранные языки</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Экология">Экология</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Медицина">Медицина</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Журналистика">Журналистика</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Дизайн">Дизайн</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="География">География</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Социология">Социология</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Культурология">Культурология</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Политология">Политология</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Искусствоведение">Искусствоведение</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Радиофизика">Радиофизика</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Биоинформатика">Биоинформатика</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Астрономия">Астрономия</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Робототехника">Робототехника</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Микроэкономика">Микроэкономика</button>
+              <button type="button" class="ps-tag ps-tag-extra" data-subject="Макроэкономика">Макроэкономика</button>
+              
+              <button type="button" class="ps-tags-toggle" data-target="prefPopularSubjectTags">Ещё <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>
+            </div>
+          </div>
+
+          <div class="ps-field-group">
+            <label class="ps-check-label">
+              {{ form.prefer_photo_only(class="ps-checkbox") }}
+              <span>Показывать только профили с фото</span>
+            </label>
+            {{ field_errors(form.prefer_photo_only) }}
+          </div>
         </div>
       </div>
 
@@ -580,16 +718,36 @@
 .ps-btn-next:hover { opacity: 0.93; box-shadow: 0 14px 32px rgba(59, 130, 246, 0.45); }
 .ps-btn-next:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
 
-.ps-error { color: #f87171; font-size: 13px; }
+.ps-field-group .form-errors {
+  margin-top: 8px;
+  display: block;
+}
 
 .ps-hidden-field { display: none; }
+
+.ps-check-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.95rem;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.ps-checkbox {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
 </style>
 
 <script>
 (function() {
-  const totalSteps = 4;
+  const totalSteps = 5;
   let currentStep = 1;
   let selectedSubjects = [];
+  let prefSelectedSubjects = [];
 
   const progressFill = document.getElementById('progressFill');
   const stepLabel = document.getElementById('stepLabel');
@@ -642,6 +800,9 @@
     if (currentStep === 4) {
       const bio = document.querySelector('[name="description"]').value.trim();
       return bio.length >= 20;
+    }
+    if (currentStep === 5) {
+      return true; // All preference fields are optional
     }
     return false;
   }
@@ -761,6 +922,81 @@
     syncSubjects();
   });
 
+  // ── Step 5: Preferred Subjects ──
+  const prefSubjectsHidden = document.getElementById('prefSubjectsHidden');
+  const prefSelectedSubjectTags = document.getElementById('prefSelectedSubjectTags');
+  const prefSelectedWrap = document.getElementById('prefSelectedWrap');
+  const prefSelectedCount = document.getElementById('prefSelectedCount');
+  const prefCustomSubjectInput = document.getElementById('prefCustomSubjectInput');
+  const prefAddSubjectBtn = document.getElementById('prefAddSubjectBtn');
+  const prefClearAllBtn = document.getElementById('prefClearAllBtn');
+
+  function syncPrefSubjects() {
+    if (prefSubjectsHidden) prefSubjectsHidden.value = prefSelectedSubjects.join(', ');
+    if (prefSelectedCount) prefSelectedCount.textContent = 'Выбрано: ' + prefSelectedSubjects.length;
+
+    if (prefSelectedSubjects.length > 0) {
+      if (prefSelectedWrap) prefSelectedWrap.style.display = 'block';
+      if (prefSelectedSubjectTags) {
+        prefSelectedSubjectTags.innerHTML = '';
+        prefSelectedSubjects.forEach(subj => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'ps-tag ps-tag-selected';
+          btn.innerHTML = subj + ' <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+          btn.addEventListener('click', () => togglePrefSubject(subj));
+          prefSelectedSubjectTags.appendChild(btn);
+        });
+      }
+    } else {
+      if (prefSelectedWrap) prefSelectedWrap.style.display = 'none';
+    }
+
+    document.querySelectorAll('#prefPopularSubjectTags .ps-tag').forEach(btn => {
+      const subj = btn.dataset.subject;
+      if (prefSelectedSubjects.includes(subj)) {
+        btn.classList.add('ps-tag-selected-dimmed');
+        btn.innerHTML = subj + ' <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+      } else {
+        btn.classList.remove('ps-tag-selected-dimmed');
+        btn.textContent = subj;
+      }
+    });
+  }
+
+  function togglePrefSubject(subj) {
+    const idx = prefSelectedSubjects.indexOf(subj);
+    if (idx >= 0) {
+      prefSelectedSubjects.splice(idx, 1);
+    } else {
+      prefSelectedSubjects.push(subj);
+    }
+    syncPrefSubjects();
+  }
+
+  document.querySelectorAll('#prefPopularSubjectTags .ps-tag').forEach(btn => {
+    btn.addEventListener('click', () => togglePrefSubject(btn.dataset.subject));
+  });
+
+  function addPrefCustomSubject() {
+    if (!prefCustomSubjectInput) return;
+    const val = prefCustomSubjectInput.value.trim();
+    if (val && !prefSelectedSubjects.includes(val)) {
+      prefSelectedSubjects.push(val);
+      prefCustomSubjectInput.value = '';
+      syncPrefSubjects();
+    }
+  }
+
+  if (prefAddSubjectBtn) prefAddSubjectBtn.addEventListener('click', addPrefCustomSubject);
+  if (prefCustomSubjectInput) prefCustomSubjectInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); addPrefCustomSubject(); }
+  });
+  if (prefClearAllBtn) prefClearAllBtn.addEventListener('click', () => {
+    prefSelectedSubjects = [];
+    syncPrefSubjects();
+  });
+
   // Navigation
   backBtn.addEventListener('click', () => {
     if (currentStep > 1) {
@@ -787,6 +1023,25 @@
   // Init
   showStep(1);
   updateNextBtn();
+
+  window.__profileSetupGoToStep = function(n) {
+    currentStep = Math.min(Math.max(1, n), totalSteps);
+    showStep(currentStep);
+    updateNextBtn();
+  };
 })();
 </script>
+{% if form.errors %}
+<script>
+(function() {
+  var stepMap = { full_name: 1, photo: 1, university: 2, faculty: 2, course: 2, subjects: 3, description: 4, interests: 4, goals: 4, telegram: 4, discord: 4, preferred_subjects: 5, preferred_course: 5, preferred_city: 5, prefer_photo_only: 5 };
+  var keys = {{ form.errors.keys()|list|tojson }};
+  var minS = 5;
+  keys.forEach(function(k) {
+    if (stepMap[k] && stepMap[k] < minS) minS = stepMap[k];
+  });
+  if (window.__profileSetupGoToStep) window.__profileSetupGoToStep(minS);
+})();
+</script>
+{% endif %}
 {% endblock %}

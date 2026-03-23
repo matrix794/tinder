@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}{{ group.title }} - StudyTinder{% endblock %}
+
+{% block content %}
+<div class="card group-detail-card">
+    <div class="group-detail-head">
+        <div>
+            <h2>{{ group.title }}</h2>
+            <div class="group-detail-meta">
+                <span>{{ group.subject }}</span>
+                <span>{{ meeting_format_labels.get(group.meeting_format, group.meeting_format) }}</span>
+                {% if group.city %}<span>{{ group.city }}</span>{% endif %}
+                <span>Участники: {{ member_count }}{% if group.max_members %}/{{ group.max_members }}{% endif %}</span>
+                {% if not group.is_active %}<span class="group-closed-badge">Группа закрыта</span>{% endif %}
+            </div>
+        </div>
+
+        <div class="group-detail-actions">
+            <a href="{{ url_for('groups') }}" class="btn btn-outline group-action-btn">К списку</a>
+
+            {% if can_join %}
+                <form method="POST" action="{{ url_for('join_group', group_id=group.id) }}">
+                    <button type="submit" class="btn btn-primary group-action-btn">Вступить</button>
+                </form>
+            {% elif membership and membership.role != 'owner' and group.is_active %}
+                <form method="POST" action="{{ url_for('leave_group', group_id=group.id) }}">
+                    <button type="submit" class="btn btn-outline group-action-btn">Покинуть</button>
+                </form>
+            {% endif %}
+
+            {% if membership and membership.role == 'owner' and group.is_active %}
+                <form method="POST" action="{{ url_for('close_group', group_id=group.id) }}">
+                    <button type="submit" class="btn btn-danger group-action-btn">Закрыть группу</button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="group-detail-description">
+        <h3>Описание</h3>
+        <p>{{ group.description }}</p>
+    </div>
+
+    <div class="group-members-block">
+        <h3>Участники</h3>
+        {% if members %}
+            <ul class="group-members-list">
+                {% for membership_item, user, profile in members %}
+                    <li class="group-member-item">
+                        <div>
+                            <div class="group-member-name">
+                                {% if profile %}
+                                    <a href="{{ url_for('view_profile', profile_id=profile.id) }}">{{ profile.full_name }}</a>
+                                {% else %}
+                                    {{ user.username }}
+                                {% endif %}
+                            </div>
+                            <div class="group-member-meta">{{ user.email }}</div>
+                        </div>
+                        <span class="badge {% if membership_item.role == 'owner' %}badge-success{% endif %}">
+                            {% if membership_item.role == 'owner' %}Создатель{% else %}Участник{% endif %}
+                        </span>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="group-member-meta">В группе пока нет участников.</p>
+        {% endif %}
+    </div>
+
+    <div class="group-chat-block" id="group-chat">
+        <div class="group-chat-head">
+            <h3>Групповой чат</h3>
+            {% if not group.is_active %}
+                <span class="group-chat-readonly">Только чтение</span>
+            {% endif %}
+        </div>
+
+        {% if membership %}
+            <div class="group-chat-messages">
+                {% if group_messages %}
+                    {% for message, sender, sender_profile in group_messages %}
+                        <article class="group-chat-message {% if message.sender_id == current_user.id %}is-own{% endif %}">
+                            <div class="group-chat-message-meta">
+                                <span class="group-chat-message-author">
+                                    {% if sender_profile %}
+                                        {{ sender_profile.full_name }}
+                                    {% else %}
+                                        {{ sender.username }}
+                                    {% endif %}
+                                </span>
+                                <span class="group-chat-message-time">{{ message.created_at.strftime('%d.%m %H:%M') }}</span>
+                            </div>
+                            <p class="group-chat-message-content">{{ message.content }}</p>
+                        </article>
+                    {% endfor %}
+                {% else %}
+                    <p class="group-chat-empty">Пока нет сообщений. Напишите первым.</p>
+                {% endif %}
+            </div>
+
+            {% if group.is_active %}
+                {% if chat_blocked|default(false) %}
+                <div class="chat-ban-banner" role="alert">
+                    <strong>Отправка сообщений ограничена.</strong>
+                    {% if chat_blocked_until %}
+                    Снова можно будет писать после {{ chat_blocked_until.strftime('%d.%m.%Y %H:%M') }} UTC (нарушения правил чата).
+                    {% else %}
+                    Попробуйте позже.
+                    {% endif %}
+                </div>
+                {% endif %}
+                <form method="POST" action="{{ url_for('send_group_message', group_id=group.id) }}" class="group-chat-form">
+                    <textarea
+                        name="content"
+                        class="form-input group-chat-input"
+                        placeholder="{% if chat_blocked|default(false) %}Отправка недоступна{% else %}Напишите сообщение для группы...{% endif %}"
+                        rows="3"
+                        maxlength="2000"
+                        {% if not chat_blocked|default(false) %}required{% endif %}
+                        {% if chat_blocked|default(false) %}disabled{% endif %}
+                    ></textarea>
+                    {% if group_chat_field_error %}
+                    <div class="form-errors group-chat-field-errors" role="alert">
+                        <span class="error">{{ group_chat_field_error }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="group-chat-form-actions">
+                        <button type="submit" class="btn btn-primary" {% if chat_blocked|default(false) %}disabled{% endif %}>Отправить</button>
+                    </div>
+                </form>
+            {% else %}
+                <p class="group-chat-empty">Группа закрыта. Добавление сообщений отключено.</p>
+            {% endif %}
+        {% else %}
+            <p class="group-chat-empty">Чтобы открыть групповой чат, вступите в эту группу.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -3,6 +3,7 @@
 {% block title %}Вход - StudyTinder{% endblock %}
 {% block body_class %}auth-page{% endblock %}
 
+{% from "macros/forms.html" import field_errors %}
 {% block content %}
 <section class="auth-section">
     <div class="auth-shell">
@@ -35,13 +36,7 @@
                     </span>
                     {{ form.username(class="form-input form-input-icon", placeholder="your@email.com") }}
                 </div>
-                {% if form.username.errors %}
-                    <div class="form-errors">
-                        {% for error in form.username.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
+                {{ field_errors(form.username) }}
             </div>
 
             <div class="form-group">
@@ -56,13 +51,7 @@
                         <svg class="icon-eye-off" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 3 18 18"/><path d="M10.58 10.58a2 2 0 0 0 2.84 2.84"/><path d="M9.88 5.09A10.94 10.94 0 0 1 12 4c4.42 0 8.21 2.58 9.94 8a10.94 10.94 0 0 1-4.1 5.53"/><path d="M6.61 6.61A10.94 10.94 0 0 0 2.06 12c.56 1.78 1.5 3.3 2.72 4.48"/></svg>
                     </button>
                 </div>
-                {% if form.password.errors %}
-                    <div class="form-errors">
-                        {% for error in form.password.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
+                {{ field_errors(form.password) }}
             </div>
 
             <div class="form-group form-group-forgot">

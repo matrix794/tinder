@@ -3,9 +3,33 @@
 {% block title %}Поиск партнеров - Tinder для учебы{% endblock %}
 
 {% block content %}
+{% set fv = filter_values if filter_values is defined else {} %}
 <section class="card">
     <h2>Поиск партнеров для учебы</h2>
     <p>Найдите единомышленников для совместной работы над проектами и подготовки к экзаменам</p>
+    <form class="discover-filters sp-filters" method="get" action="{{ url_for('search_partners') }}" style="margin-top:1rem;">
+        <div class="df-row df-row-2">
+            <input type="text" name="city" class="df-input" placeholder="Город" value="{{ fv.city or '' }}" />
+            <select name="course" class="df-select" aria-label="Курс">
+                <option value="">Любой курс</option>
+                {% for n in range(1, 7) %}
+                <option value="{{ n }}" {% if fv.course == n %}selected{% endif %}>{{ n }} курс</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="df-row">
+            <input type="text" name="subject" class="df-input" placeholder="Предмет" value="{{ fv.subject or '' }}" style="flex:1;min-width:0;" />
+        </div>
+        <div class="df-row df-row-3">
+            <label class="df-check"><input type="checkbox" name="photo_only" value="1" {% if fv.photo_only %}checked{% endif %} /> Только с фото</label>
+            <select name="presence" class="df-select" aria-label="Онлайн">
+                <option value="">Все</option>
+                <option value="online" {% if fv.presence == 'online' %}selected{% endif %}>Онлайн</option>
+                <option value="offline" {% if fv.presence == 'offline' %}selected{% endif %}>Офлайн</option>
+            </select>
+            <button type="submit" class="df-submit">Применить</button>
+        </div>
+    </form>
 </section>
 
 {% if profiles %}
@@ -24,6 +48,12 @@
                         <div class="profile-meta">
                             <span class="course-badge">{{ profile.course }} курс</span>
                             <span class="university">{{ profile.university }}</span>
+                            {% if profile.city %}
+                            <span class="university">· {{ profile.city }}</span>
+                            {% endif %}
+                            {% if user_is_online_now(profile.user) %}
+                            <span class="course-badge" style="background:rgba(34,197,94,.25);border-color:rgba(34,197,94,.5);">Онлайн</span>
+                            {% endif %}
                         </div>
                     </div>
                 </div>

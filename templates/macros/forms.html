@@ -1,0 +1,21 @@
+{# Ошибки валидации под полем (как на странице входа) #}
+{% macro field_errors(field) %}
+{% if field and field.errors %}
+<div class="form-errors" role="alert">
+  {% for error in field.errors %}
+    <span class="error">{{ error }}</span>
+  {% endfor %}
+</div>
+{% endif %}
+{% endmacro %}
+
+{# Текст ошибки без привязки к полю WTForms #}
+{% macro text_errors(messages) %}
+{% if messages %}
+<div class="form-errors" role="alert">
+  {% for msg in messages %}
+    <span class="error">{{ msg }}</span>
+  {% endfor %}
+</div>
+{% endif %}
+{% endmacro %}

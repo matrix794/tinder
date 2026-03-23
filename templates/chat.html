@@ -33,11 +33,31 @@
     </div>
 
     <div class="chat-input">
+        {% if chat_blocked|default(false) %}
+        <div class="chat-ban-banner" role="alert">
+            <strong>Отправка сообщений ограничена.</strong>
+            {% if chat_blocked_until %}
+            Снова можно будет писать после {{ chat_blocked_until.strftime('%d.%m.%Y %H:%M') }} UTC (нарушения правил чата).
+            {% else %}
+            Попробуйте позже.
+            {% endif %}
+        </div>
+        {% endif %}
         <form id="messageForm" method="POST" action="{{ url_for('send_message', receiver_id=other_user.id) }}">
             {{ form.hidden_tag() }}
             <div class="input-group">
+                {% if chat_blocked|default(false) %}
+                {{ form.content(class="message-input", id="messageInput", disabled=true) }}
+                {{ form.submit(class="btn btn-primary send-btn", disabled=true) }}
+                {% else %}
                 {{ form.content(class="message-input", id="messageInput") }}
                 {{ form.submit(class="btn btn-primary send-btn") }}
+                {% endif %}
+            </div>
+            <div id="messageFieldErrors" class="form-errors chat-field-errors" {% if not form.content.errors %}style="display:none;"{% endif %} role="alert">
+                {% if form.content.errors %}
+                    {% for e in form.content.errors %}<span class="error">{{ e }}</span>{% endfor %}
+                {% endif %}
             </div>
         </form>
     </div>
@@ -48,6 +68,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const chatMessages = document.getElementById('chatMessages');
     const messageForm = document.getElementById('messageForm');
     const messageInput = document.getElementById('messageInput');
+    const messageFieldErrors = document.getElementById('messageFieldErrors');
+    if (messageInput && messageFieldErrors) {
+        messageInput.addEventListener('input', function() {
+            messageFieldErrors.style.display = 'none';
+            messageFieldErrors.innerHTML = '';
+        });
+    }
     
     // Автопрокрутка к последнему сообщению
     function scrollToBottom() {
@@ -57,7 +84,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Отправка сообщения через AJAX
     messageForm.addEventListener('submit', function(e) {
         e.preventDefault();
-        
+        if (messageInput && messageInput.disabled) return;
+
         const formData = new FormData(messageForm);
         
         fetch(messageForm.action, {
@@ -66,6 +94,8 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(response => response.json())
         .then(data => {
+            const errBox = document.getElementById('messageFieldErrors');
+            if (errBox) { errBox.style.display = 'none'; errBox.innerHTML = ''; }
             if (data.success) {
                 // Добавляем новое сообщение в чат
                 const messageDiv = document.createElement('div');
@@ -80,8 +110,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 chatMessages.appendChild(messageDiv);
                 messageInput.value = '';
                 scrollToBottom();
+            } else if (data.errors && data.errors.content && errBox) {
+                errBox.style.display = 'flex';
+                data.errors.content.forEach(function(msg) {
+                    const span = document.createElement('span');
+                    span.className = 'error';
+                    span.textContent = msg;
+                    errBox.appendChild(span);
+                });
+            } else if (data.blocked && errBox) {
+                errBox.style.display = 'flex';
+                const span = document.createElement('span');
+                span.className = 'error';
+                span.textContent = data.error || 'Отправка сообщений ограничена.';
+                errBox.appendChild(span);
+                if (messageInput) messageInput.disabled = true;
+                const sub = messageForm.querySelector('input[type="submit"], button[type="submit"]');
+                if (sub) sub.disabled = true;
             } else {
-                alert('Ошибка отправки сообщения: ' + data.error);
+                alert('Ошибка отправки сообщения: ' + (data.error || 'неизвестная ошибка'));
             }
         })
         .catch(error => {
@@ -121,6 +168,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Отправка сообщения по Enter (Ctrl+Enter для новой строки)
     messageInput.addEventListener('keydown', function(e) {
+        if (messageInput.disabled) return;
         if (e.key === 'Enter' && !e.ctrlKey) {
             e.preventDefault();
             messageForm.dispatchEvent(new Event('submit'));
@@ -288,6 +336,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
 .message-received .message-time {
     color: var(--color-muted);
+}
+
+.chat-ban-banner {
+    margin-bottom: 0.75rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    color: #fecaca;
+    font-size: 0.9rem;
+    line-height: 1.45;
 }
 
 .chat-input {

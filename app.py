@@ -1,18 +1,20 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileField, FileAllowed
-from wtforms import StringField, PasswordField, SubmitField, TextAreaField, SelectField, validators
+from wtforms import StringField, PasswordField, SubmitField, TextAreaField, SelectField, IntegerField, BooleanField, validators
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import os
 import re
 from secrets import token_urlsafe
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 from PIL import Image
 from sqlalchemy import or_, func
+
+from profanity import contains_profanity
 
 try:
     from authlib.integrations.flask_client import OAuth
@@ -31,17 +33,25 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 # Для локального запуска без PostgreSQL используем SQLite; для продакшена задайте DATABASE_URL
 # По умолчанию — папка проекта; для проблем с записью (OneDrive и т.п.) задайте DATABASE_URL или используйте TEMP
-import tempfile
-_db_dir = os.path.dirname(os.path.abspath(__file__))
-_db_path = os.path.join(_db_dir, 'tinder.db')
-try:
-    with open(_db_path, 'a'):
-        pass
-except OSError:
-    _db_path = os.path.join(tempfile.gettempdir(), 'tinder.db')
-_default_uri = 'sqlite:///' + _db_path.replace('\\', '/')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', _default_uri)
+def normalize_database_url(url):
+    """Нормализует URL БД для SQLAlchemy (postgres:// -> postgresql+psycopg2://)."""
+    if not url:
+        return url
+    if url.startswith('postgres://'):
+        return url.replace('postgres://', 'postgresql+psycopg2://', 1)
+    if url.startswith('postgresql://'):
+        return url.replace('postgresql://', 'postgresql+psycopg2://', 1)
+    return url
+
+
+_default_uri = 'postgresql+psycopg2://postgres:postgres@localhost:5432/tinder'
+app.config['SQLALCHEMY_DATABASE_URI'] = normalize_database_url(
+    os.environ.get('DATABASE_URL', _default_uri)
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True
+}
 
 # Настройки для загрузки файлов
 UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'uploads')
@@ -99,8 +109,16 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(120), nullable=False)
+    # scrypt/pbkdf2/bcrypt хэши длиннее 120 символов (Werkzeug 3 по умолчанию — scrypt)
+    password_hash = db.Column(db.String(512), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Активность (для «онлайн» в поиске)
+    last_seen_at = db.Column(db.DateTime, nullable=True)
+
+    # Блокировки за мат в личных/групповых чатах (3 попытки → бан 1ч, затем 3, 8, 12, 24ч)
+    profanity_strike_count = db.Column(db.Integer, default=0, nullable=False)
+    profanity_ban_tier = db.Column(db.Integer, default=0, nullable=False)
+    profanity_blocked_until = db.Column(db.DateTime, nullable=True)
     
     # Связь с профилем студента
     profile = db.relationship('StudentProfile', backref='user', uselist=False, cascade='all, delete-orphan')
@@ -121,7 +139,8 @@ class StudentProfile(db.Model):
     university = db.Column(db.String(100), nullable=False)
     faculty = db.Column(db.String(100), nullable=False)
     course = db.Column(db.Integer, nullable=False)
-    
+    city = db.Column(db.String(100), nullable=True)
+
     # Предметы и интересы
     subjects = db.Column(db.Text)  # JSON строка с предметами
     interests = db.Column(db.Text)  # JSON строка с интересами
@@ -133,7 +152,9 @@ class StudentProfile(db.Model):
     # Предпочтения по партнеру
     preferred_subjects = db.Column(db.Text)  # JSON строка
     preferred_course = db.Column(db.String(50))  # например "1-3" или "4-6"
-    
+    preferred_city = db.Column(db.String(100))  # город партнёра
+    prefer_photo_only = db.Column(db.Boolean, default=False)  # только с фото
+
     # Контактная информация
     telegram = db.Column(db.String(50))
     discord = db.Column(db.String(50))
@@ -188,9 +209,127 @@ class Message(db.Model):
     sender = db.relationship('User', foreign_keys=[sender_id], backref='sent_messages')
     receiver = db.relationship('User', foreign_keys=[receiver_id], backref='received_messages')
 
+
+class StudyGroup(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(120), nullable=False)
+    subject = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    meeting_format = db.Column(db.String(20), nullable=False, default='online')
+    city = db.Column(db.String(100))
+    max_members = db.Column(db.Integer)
+    creator_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    creator = db.relationship('User', backref='created_study_groups', foreign_keys=[creator_id])
+    memberships = db.relationship('StudyGroupMembership', backref='group', cascade='all, delete-orphan', lazy='dynamic')
+    messages = db.relationship('StudyGroupMessage', backref='group', cascade='all, delete-orphan', lazy='dynamic')
+
+
+class StudyGroupMembership(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('study_group.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    role = db.Column(db.String(20), nullable=False, default='member')
+    joined_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref='study_group_memberships')
+    __table_args__ = (db.UniqueConstraint('group_id', 'user_id', name='unique_group_member'),)
+
+
+class StudyGroupMessage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('study_group.id'), nullable=False)
+    sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    sender = db.relationship('User', backref='study_group_messages')
+
+
+PROFANITY_MSG = 'Недопустимая лексика. Уберите ненормативные выражения.'
+
+# Чаты: после 3-х попыток с матом — бан; длительности по очереди (часы)
+PROFANITY_CHAT_STRIKES_LIMIT = 3
+PROFANITY_CHAT_BAN_HOURS = [1, 3, 8, 12, 24]
+
+# Окно «онлайн» для фильтра поиска (последняя активность)
+ONLINE_WINDOW_MINUTES = 5
+
+
+def is_user_profanity_chat_blocked(user):
+    """Пользователь не может писать в личку/группы из-за активной блокировки за мат."""
+    until = getattr(user, 'profanity_blocked_until', None)
+    if not until:
+        return False
+    return datetime.utcnow() < until
+
+
+def format_profanity_chat_blocked_message(user):
+    """Текст, если блокировка уже действует."""
+    until = user.profanity_blocked_until
+    if not until:
+        return 'Вы временно не можете отправлять сообщения.'
+    return (
+        'Вы временно не можете отправлять сообщения из-за нарушений правил. '
+        f'Ограничение действует до {until.strftime("%d.%m.%Y %H:%M")} UTC.'
+    )
+
+
+def register_chat_profanity_violation(user):
+    """
+    Учесть попытку отправить мат в чате. Каждые 3 попытки — бан на следующий срок из PROFANITY_CHAT_BAN_HOURS.
+    Возвращает dict: banned (bool), hours (int|None), strikes (int после инкремента).
+    """
+    user.profanity_strike_count = (user.profanity_strike_count or 0) + 1
+    strikes = user.profanity_strike_count
+    result = {'banned': False, 'hours': None, 'strikes': strikes}
+
+    if strikes >= PROFANITY_CHAT_STRIKES_LIMIT:
+        tier_idx = min(user.profanity_ban_tier or 0, len(PROFANITY_CHAT_BAN_HOURS) - 1)
+        hours = PROFANITY_CHAT_BAN_HOURS[tier_idx]
+        user.profanity_blocked_until = datetime.utcnow() + timedelta(hours=hours)
+        user.profanity_ban_tier = (user.profanity_ban_tier or 0) + 1
+        user.profanity_strike_count = 0
+        result['banned'] = True
+        result['hours'] = hours
+        result['strikes'] = 0
+    db.session.commit()
+    return result
+
+
+def format_new_chat_ban_message(hours):
+    return (
+        f'Вы заблокированы на {hours} ч. за повторные нарушения (ненормативная лексика в чатах). '
+        'Дальнейшие нарушения увеличивают срок блокировки.'
+    )
+
+
+class NoProfanity:
+    """WTForms: запрет ненормативной лексики в поле."""
+
+    def __init__(self, message=None):
+        self.message = message or PROFANITY_MSG
+
+    def __call__(self, form, field):
+        if field.data is None:
+            return
+        if contains_profanity(str(field.data)):
+            raise validators.ValidationError(self.message)
+
+
 # Формы
 class RegistrationForm(FlaskForm):
-    username = StringField('Имя', validators=[validators.DataRequired(), validators.Length(min=2, max=50)])
+    username = StringField(
+        'Имя',
+        validators=[
+            validators.DataRequired(),
+            validators.Length(min=2, max=50),
+            NoProfanity(),
+        ],
+    )
     email = StringField('Email', validators=[validators.DataRequired(), validators.Email()])
     password = PasswordField('Пароль', validators=[validators.DataRequired(), validators.Length(min=6)])
     password2 = PasswordField('Повторите пароль', validators=[validators.DataRequired(), validators.EqualTo('password')])
@@ -202,34 +341,138 @@ class LoginForm(FlaskForm):
     submit = SubmitField('Войти')
 
 class StudentProfileForm(FlaskForm):
-    full_name = StringField('Полное имя', validators=[validators.DataRequired(), validators.Length(min=2, max=100)])
-    university = StringField('Университет', validators=[validators.DataRequired(), validators.Length(min=2, max=100)])
-    faculty = StringField('Факультет', validators=[validators.DataRequired(), validators.Length(min=2, max=100)])
+    full_name = StringField(
+        'Полное имя',
+        validators=[validators.DataRequired(), validators.Length(min=2, max=100), NoProfanity()],
+    )
+    university = StringField(
+        'Университет',
+        validators=[validators.DataRequired(), validators.Length(min=2, max=100), NoProfanity()],
+    )
+    faculty = StringField(
+        'Факультет',
+        validators=[validators.DataRequired(), validators.Length(min=2, max=100), NoProfanity()],
+    )
+    city = StringField(
+        'Город',
+        validators=[validators.Optional(), validators.Length(max=100), NoProfanity()],
+        render_kw={"placeholder": "Москва, Санкт-Петербург..."},
+    )
     course = SelectField('Курс', choices=[(1, '1 курс'), (2, '2 курс'), (3, '3 курс'), (4, '4 курс'), (5, '5 курс'), (6, '6 курс')], coerce=int, validators=[validators.DataRequired()])
     
-    subjects = TextAreaField('Предметы (через запятую)', validators=[validators.DataRequired()], render_kw={"placeholder": "Математика, Физика, Программирование"})
-    interests = TextAreaField('Интересы (через запятую)', validators=[validators.DataRequired()], render_kw={"placeholder": "ИИ, Веб-разработка, Анализ данных"})
-    
-    description = TextAreaField('О себе', validators=[validators.DataRequired()], render_kw={"placeholder": "Расскажите о себе, своих целях и интересах"})
-    goals = TextAreaField('Цели обучения', validators=[validators.DataRequired()], render_kw={"placeholder": "Что хотите изучать вместе с партнером?"})
-    
-    preferred_subjects = TextAreaField('Интересующие предметы у партнера (через запятую)', render_kw={"placeholder": "Математика, Физика"})
+    subjects = TextAreaField(
+        'Предметы (через запятую)',
+        validators=[validators.DataRequired(), NoProfanity()],
+        render_kw={"placeholder": "Математика, Физика, Программирование"},
+    )
+    interests = TextAreaField(
+        'Интересы (через запятую)',
+        validators=[validators.DataRequired(), NoProfanity()],
+        render_kw={"placeholder": "ИИ, Веб-разработка, Анализ данных"},
+    )
+
+    description = TextAreaField(
+        'О себе',
+        validators=[validators.DataRequired(), NoProfanity()],
+        render_kw={"placeholder": "Расскажите о себе, своих целях и интересах"},
+    )
+    goals = TextAreaField(
+        'Цели обучения',
+        validators=[validators.DataRequired(), NoProfanity()],
+        render_kw={"placeholder": "Что хотите изучать вместе с партнером?"},
+    )
+
+    preferred_subjects = TextAreaField(
+        'Интересующие предметы у партнера (через запятую)',
+        validators=[validators.Optional(), NoProfanity()],
+        render_kw={"placeholder": "Математика, Физика"},
+    )
     preferred_course = SelectField('Предпочтительный курс партнера', choices=[('any', 'Любой'), ('1-2', '1-2 курс'), ('3-4', '3-4 курс'), ('5-6', '5-6 курс')])
-    
-    telegram = StringField('Telegram (опционально)', render_kw={"placeholder": "@username"})
-    discord = StringField('Discord (опционально)', render_kw={"placeholder": "username#1234"})
+
+    preferred_city = StringField(
+        'Предпочтительный город партнера',
+        validators=[validators.Optional(), validators.Length(max=100), NoProfanity()],
+        render_kw={"placeholder": "Москва, Санкт-Петербург..."},
+    )
+    prefer_photo_only = BooleanField('Только партнёры с фото')
+
+    telegram = StringField(
+        'Telegram (опционально)',
+        validators=[validators.Optional(), NoProfanity()],
+        render_kw={"placeholder": "@username"},
+    )
+    discord = StringField(
+        'Discord (опционально)',
+        validators=[validators.Optional(), NoProfanity()],
+        render_kw={"placeholder": "username#1234"},
+    )
     
     photo = FileField('Фото профиля (опционально)', validators=[FileAllowed(['jpg', 'jpeg', 'png', 'gif'], 'Только изображения!')])
     
     submit = SubmitField('Сохранить профиль')
 
 class MessageForm(FlaskForm):
-    content = TextAreaField('Сообщение', validators=[validators.DataRequired(), validators.Length(min=1, max=1000)], render_kw={"placeholder": "Напишите сообщение...", "rows": 3})
+    # Мат в чате обрабатываем вручную (счётчик попыток и баны), без NoProfanity здесь
+    content = TextAreaField(
+        'Сообщение',
+        validators=[validators.DataRequired(), validators.Length(min=1, max=1000)],
+        render_kw={"placeholder": "Напишите сообщение...", "rows": 3},
+    )
     submit = SubmitField('Отправить')
+
+class StudyGroupForm(FlaskForm):
+    title = StringField(
+        'Название группы',
+        validators=[validators.DataRequired(), validators.Length(min=3, max=120), NoProfanity()],
+    )
+    subject = StringField(
+        'Предмет',
+        validators=[validators.DataRequired(), validators.Length(min=2, max=100), NoProfanity()],
+    )
+    description = TextAreaField(
+        'Описание',
+        validators=[validators.DataRequired(), validators.Length(min=12, max=1500), NoProfanity()],
+        render_kw={"placeholder": "Опишите цель группы, темы и формат занятий", "rows": 4},
+    )
+    meeting_format = SelectField(
+        'Формат встреч',
+        choices=[('online', 'Онлайн'), ('offline', 'Очно'), ('hybrid', 'Смешанный')],
+        validators=[validators.DataRequired()]
+    )
+    city = StringField(
+        'Город (для очных встреч)',
+        validators=[validators.Optional(), validators.Length(max=100), NoProfanity()],
+    )
+    max_members = IntegerField('Лимит участников (необязательно)', validators=[validators.Optional(), validators.NumberRange(min=2, max=200)])
+    submit = SubmitField('Создать группу')
+
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+
+@app.before_request
+def touch_last_seen():
+    """Обновляет last_seen_at не чаще чем раз в ~90 с (меньше нагрузки на БД)."""
+    if not current_user.is_authenticated:
+        return
+    now = datetime.utcnow()
+    key = '_last_seen_touch_ts'
+    prev = session.get(key)
+    if prev:
+        try:
+            if (now - datetime.fromisoformat(prev)).total_seconds() < 90:
+                return
+        except Exception:
+            pass
+    session[key] = now.isoformat()
+    session.modified = True
+    try:
+        User.query.filter_by(id=current_user.id).update({'last_seen_at': now})
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 def is_admin(user):
@@ -252,6 +495,112 @@ def inject_role_flags():
     return {
         'current_user_is_admin': current_user.is_authenticated and is_admin(current_user)
     }
+
+
+@app.template_global()
+def user_is_online_now(user):
+    """Онлайн, если last_seen в пределах ONLINE_WINDOW_MINUTES."""
+    if not user or not getattr(user, 'last_seen_at', None):
+        return False
+    return datetime.utcnow() - user.last_seen_at < timedelta(minutes=ONLINE_WINDOW_MINUTES)
+
+
+def parse_discovery_filters():
+    """Параметры поиска из query string: город, курс, предмет, фото, онлайн/офлайн."""
+    city = (request.args.get('city') or '').strip() or None
+    subject = (request.args.get('subject') or '').strip() or None
+    presence = (request.args.get('presence') or '').strip().lower()
+    if presence not in ('online', 'offline'):
+        presence = None
+    course = None
+    course_raw = (request.args.get('course') or '').strip()
+    if course_raw:
+        try:
+            ci = int(course_raw)
+            if 1 <= ci <= 6:
+                course = ci
+        except (TypeError, ValueError):
+            pass
+    photo_only = request.args.get('photo_only') in ('1', 'on', 'true', 'yes')
+    return {
+        'city': city,
+        'subject': subject,
+        'course': course,
+        'photo_only': photo_only,
+        'presence': presence,
+    }
+
+
+def get_profile_preferences(profile):
+    """Строит dict фильтров из сохранённых предпочтений профиля пользователя."""
+    if not profile:
+        return {}
+    filters = {
+        'city': (getattr(profile, 'preferred_city', None) or '').strip() or None,
+        'photo_only': bool(getattr(profile, 'prefer_photo_only', False)),
+        'presence': None,
+        'course': None,
+        'subject': None,
+    }
+
+    # preferred_course: 'any', '1-2', '3-4', '5-6' → диапазон
+    pc = (profile.preferred_course or '').strip().lower()
+    filters['course_range'] = pc if pc and pc != 'any' else None
+
+    # preferred_subjects: через запятую → список
+    ps = (profile.preferred_subjects or '').strip()
+    filters['subjects_list'] = [s.strip() for s in ps.split(',') if s.strip()] if ps else None
+
+    return filters
+
+
+def apply_discovery_filters(query, filters):
+    """Ограничивает запрос StudentProfile фильтрами поиска."""
+    f = filters or {}
+    if f.get('city'):
+        query = query.filter(StudentProfile.city.ilike('%' + f['city'] + '%'))
+    if f.get('course') is not None:
+        query = query.filter(StudentProfile.course == f['course'])
+    if f.get('subject'):
+        query = query.filter(StudentProfile.subjects.ilike('%' + f['subject'] + '%'))
+    if f.get('photo_only'):
+        query = query.filter(
+            StudentProfile.photo_filename.isnot(None),
+            StudentProfile.photo_filename != '',
+        )
+    # Диапазон курса из профильных предпочтений: '1-2' → BETWEEN 1 AND 2
+    course_range = f.get('course_range')
+    if course_range:
+        try:
+            parts = course_range.split('-')
+            low, high = int(parts[0]), int(parts[1])
+            query = query.filter(StudentProfile.course.between(low, high))
+        except (ValueError, IndexError):
+            pass
+    # Несколько предметов из профильных предпочтений: совпадение по любому
+    subjects_list = f.get('subjects_list')
+    if subjects_list:
+        conditions = [StudentProfile.subjects.ilike('%' + s + '%') for s in subjects_list]
+        query = query.filter(or_(*conditions))
+    presence = f.get('presence')
+    if presence in ('online', 'offline'):
+        threshold = datetime.utcnow() - timedelta(minutes=ONLINE_WINDOW_MINUTES)
+        online_ids = db.session.query(User.id).filter(
+            User.last_seen_at.isnot(None),
+            User.last_seen_at >= threshold,
+        )
+        if presence == 'online':
+            query = query.filter(StudentProfile.user_id.in_(online_ids))
+        else:
+            query = query.filter(~StudentProfile.user_id.in_(online_ids))
+    return query
+
+
+MEETING_FORMAT_LABELS = {
+    'online': 'Онлайн',
+    'offline': 'Очно',
+    'hybrid': 'Смешанный',
+}
 
 
 def is_oauth_provider_enabled(provider):
@@ -353,19 +702,17 @@ def delete_profile_photo(filename):
         if os.path.exists(filepath):
             os.remove(filepath)
 
-def get_next_profile_for_user(user_id):
-    """Получает следующий профиль для просмотра пользователем"""
-    # Получаем ID пользователей, которых уже лайкал/дизлайкал текущий пользователь
+def get_next_profile_for_user(user_id, filters=None):
+    """Получает следующий профиль для просмотра пользователем (с учётом фильтров поиска)."""
     liked_user_ids = db.session.query(Like.liked_id).filter_by(liker_id=user_id).subquery()
-    
-    # Получаем следующий профиль, который еще не был оценен
-    next_profile = StudentProfile.query.filter(
+
+    q = StudentProfile.query.filter(
         StudentProfile.is_active == True,
         StudentProfile.user_id != user_id,
-        ~StudentProfile.user_id.in_(liked_user_ids)
-    ).first()
-    
-    return next_profile
+        ~StudentProfile.user_id.in_(liked_user_ids),
+    )
+    q = apply_discovery_filters(q, filters or {})
+    return q.first()
 
 # Маршруты
 @app.route('/')
@@ -576,11 +923,13 @@ def create_profile():
             photo_filename = save_profile_photo(form.photo.data, current_user.id)
             print(f"Результат загрузки фото: {photo_filename}")
         
+        city_val = (form.city.data or '').strip() or None
         profile = StudentProfile(
             user_id=current_user.id,
             full_name=form.full_name.data,
             university=form.university.data,
             faculty=form.faculty.data,
+            city=city_val,
             course=form.course.data,
             subjects=form.subjects.data,
             interests=form.interests.data,
@@ -588,6 +937,8 @@ def create_profile():
             goals=form.goals.data,
             preferred_subjects=form.preferred_subjects.data,
             preferred_course=form.preferred_course.data,
+            preferred_city=(form.preferred_city.data or '').strip() or None,
+            prefer_photo_only=bool(form.prefer_photo_only.data),
             telegram=form.telegram.data,
             discord=form.discord.data,
             photo_filename=photo_filename
@@ -642,6 +993,7 @@ def edit_profile():
         profile.full_name = form.full_name.data
         profile.university = form.university.data
         profile.faculty = form.faculty.data
+        profile.city = (form.city.data or '').strip() or None
         profile.course = form.course.data
         profile.subjects = form.subjects.data
         profile.interests = form.interests.data
@@ -649,6 +1001,8 @@ def edit_profile():
         profile.goals = form.goals.data
         profile.preferred_subjects = form.preferred_subjects.data
         profile.preferred_course = form.preferred_course.data
+        profile.preferred_city = (form.preferred_city.data or '').strip() or None
+        profile.prefer_photo_only = bool(form.prefer_photo_only.data)
         profile.telegram = form.telegram.data
         profile.discord = form.discord.data
         profile.updated_at = datetime.utcnow()
@@ -678,13 +1032,15 @@ def search_partners():
         flash('Сначала создайте профиль.', 'info')
         return redirect(url_for('create_profile'))
     
-    # Получаем всех активных студентов, кроме текущего пользователя
-    profiles = StudentProfile.query.filter(
+    filters = parse_discovery_filters()
+    q = StudentProfile.query.filter(
         StudentProfile.is_active == True,
-        StudentProfile.user_id != current_user.id
-    ).all()
-    
-    return render_template('search_partners.html', profiles=profiles)
+        StudentProfile.user_id != current_user.id,
+    )
+    q = apply_discovery_filters(q, filters)
+    profiles = q.all()
+
+    return render_template('search_partners.html', profiles=profiles, filter_values=filters)
 
 @app.route('/tinder')
 @login_required
@@ -693,12 +1049,12 @@ def tinder():
         flash('Сначала создайте профиль.', 'info')
         return redirect(url_for('create_profile'))
     
-    # Получаем следующий профиль для просмотра
-    next_profile = get_next_profile_for_user(current_user.id)
-    
+    filters = get_profile_preferences(current_user.profile)
+    next_profile = get_next_profile_for_user(current_user.id, filters)
+
     if not next_profile:
         return render_template('tinder.html', profile=None, no_more_profiles=True)
-    
+
     return render_template('tinder.html', profile=next_profile, no_more_profiles=False)
 
 @app.route('/like/<int:profile_id>', methods=['POST'])
@@ -879,6 +1235,272 @@ def likes():
 
     return render_template('likes.html', likes=likes_data)
 
+
+@app.route('/groups')
+@login_required
+def groups():
+    subject = (request.args.get('subject') or '').strip()
+    format_filter = (request.args.get('format') or '').strip().lower()
+
+    query = StudyGroup.query.filter_by(is_active=True)
+    if subject:
+        query = query.filter(StudyGroup.subject.ilike(f"%{subject}%"))
+    if format_filter in MEETING_FORMAT_LABELS:
+        query = query.filter(StudyGroup.meeting_format == format_filter)
+
+    groups_list = query.order_by(StudyGroup.created_at.desc()).all()
+
+    joined_group_ids = {
+        membership.group_id
+        for membership in StudyGroupMembership.query.filter_by(user_id=current_user.id).all()
+    }
+
+    member_counts = {
+        group_id: count
+        for group_id, count in db.session.query(
+            StudyGroupMembership.group_id, func.count(StudyGroupMembership.id)
+        ).group_by(StudyGroupMembership.group_id).all()
+    }
+
+    return render_template(
+        'groups.html',
+        groups=groups_list,
+        joined_group_ids=joined_group_ids,
+        member_counts=member_counts,
+        meeting_format_labels=MEETING_FORMAT_LABELS,
+        subject=subject,
+        format_filter=format_filter,
+    )
+
+
+@app.route('/groups/new', methods=['GET', 'POST'])
+@login_required
+def create_group():
+    form = StudyGroupForm()
+
+    if form.validate_on_submit():
+        city = (form.city.data or '').strip() or None
+        max_members = form.max_members.data if form.max_members.data else None
+
+        group = StudyGroup(
+            title=form.title.data.strip(),
+            subject=form.subject.data.strip(),
+            description=form.description.data.strip(),
+            meeting_format=form.meeting_format.data,
+            city=city,
+            max_members=max_members,
+            creator_id=current_user.id,
+            is_active=True,
+        )
+        db.session.add(group)
+        db.session.flush()
+
+        db.session.add(
+            StudyGroupMembership(group_id=group.id, user_id=current_user.id, role='owner')
+        )
+        db.session.commit()
+
+        flash('Учебная группа успешно создана.', 'success')
+        return redirect(url_for('group_detail', group_id=group.id))
+
+    return render_template('group_create.html', form=form)
+
+
+@app.route('/groups/<int:group_id>')
+@login_required
+def group_detail(group_id):
+    group = StudyGroup.query.get_or_404(group_id)
+
+    membership = StudyGroupMembership.query.filter_by(
+        group_id=group.id, user_id=current_user.id
+    ).first()
+
+    member_count = StudyGroupMembership.query.filter_by(group_id=group.id).count()
+    can_join = (
+        group.is_active
+        and membership is None
+        and (group.max_members is None or member_count < group.max_members)
+    )
+
+    members = (
+        db.session.query(StudyGroupMembership, User, StudentProfile)
+        .join(User, User.id == StudyGroupMembership.user_id)
+        .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
+        .filter(StudyGroupMembership.group_id == group.id)
+        .order_by(StudyGroupMembership.joined_at.asc())
+        .all()
+    )
+
+    group_messages = []
+    if membership:
+        group_messages = (
+            db.session.query(StudyGroupMessage, User, StudentProfile)
+            .join(User, User.id == StudyGroupMessage.sender_id)
+            .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
+            .filter(StudyGroupMessage.group_id == group.id)
+            .order_by(StudyGroupMessage.created_at.asc())
+            .all()
+        )
+
+    chat_err = session.pop('group_chat_error', None)
+    group_chat_field_error = None
+    if (
+        chat_err
+        and isinstance(chat_err, dict)
+        and chat_err.get('group_id') == group.id
+    ):
+        group_chat_field_error = chat_err.get('message')
+
+    me = User.query.get(current_user.id)
+    chat_blocked = is_user_profanity_chat_blocked(me)
+    chat_blocked_until = me.profanity_blocked_until if chat_blocked else None
+
+    return render_template(
+        'group_detail.html',
+        group=group,
+        membership=membership,
+        member_count=member_count,
+        can_join=can_join,
+        members=members,
+        group_messages=group_messages,
+        meeting_format_labels=MEETING_FORMAT_LABELS,
+        group_chat_field_error=group_chat_field_error,
+        chat_blocked=chat_blocked,
+        chat_blocked_until=chat_blocked_until,
+    )
+
+
+@app.route('/groups/<int:group_id>/join', methods=['POST'])
+@login_required
+def join_group(group_id):
+    group = StudyGroup.query.get_or_404(group_id)
+
+    if not group.is_active:
+        flash('Эта группа уже закрыта.', 'error')
+        return redirect(url_for('groups'))
+
+    existing_membership = StudyGroupMembership.query.filter_by(
+        group_id=group.id, user_id=current_user.id
+    ).first()
+    if existing_membership:
+        flash('Вы уже состоите в этой группе.', 'info')
+        return redirect(url_for('group_detail', group_id=group.id))
+
+    member_count = StudyGroupMembership.query.filter_by(group_id=group.id).count()
+    if group.max_members and member_count >= group.max_members:
+        flash('В группе уже достигнут лимит участников.', 'error')
+        return redirect(url_for('group_detail', group_id=group.id))
+
+    db.session.add(StudyGroupMembership(group_id=group.id, user_id=current_user.id, role='member'))
+    db.session.commit()
+    flash('Вы вступили в учебную группу.', 'success')
+    return redirect(url_for('group_detail', group_id=group.id))
+
+
+@app.route('/groups/<int:group_id>/leave', methods=['POST'])
+@login_required
+def leave_group(group_id):
+    group = StudyGroup.query.get_or_404(group_id)
+    membership = StudyGroupMembership.query.filter_by(
+        group_id=group.id, user_id=current_user.id
+    ).first()
+
+    if not membership:
+        flash('Вы не состоите в этой группе.', 'info')
+        return redirect(url_for('groups'))
+
+    if membership.role == 'owner':
+        flash('Создатель группы не может покинуть её. Закройте группу, если она больше не нужна.', 'error')
+        return redirect(url_for('group_detail', group_id=group.id))
+
+    db.session.delete(membership)
+    db.session.commit()
+    flash('Вы покинули группу.', 'info')
+    return redirect(url_for('groups'))
+
+
+@app.route('/groups/<int:group_id>/messages', methods=['POST'])
+@login_required
+def send_group_message(group_id):
+    group = StudyGroup.query.get_or_404(group_id)
+    membership = StudyGroupMembership.query.filter_by(
+        group_id=group.id, user_id=current_user.id
+    ).first()
+
+    if not membership:
+        flash('Вступите в группу, чтобы писать в чат.', 'error')
+        return redirect(url_for('group_detail', group_id=group.id))
+
+    if not group.is_active:
+        flash('Группа закрыта. В чат больше нельзя отправлять сообщения.', 'error')
+        return redirect(url_for('group_detail', group_id=group.id))
+
+    user = User.query.get(current_user.id)
+    if is_user_profanity_chat_blocked(user):
+        session['group_chat_error'] = {
+            'group_id': group.id,
+            'message': format_profanity_chat_blocked_message(user),
+        }
+        return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+
+    content = (request.form.get('content') or '').strip()
+    if not content:
+        session['group_chat_error'] = {
+            'group_id': group.id,
+            'message': 'Введите сообщение.',
+        }
+        return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+
+    if len(content) > 2000:
+        session['group_chat_error'] = {
+            'group_id': group.id,
+            'message': 'Сообщение слишком длинное (максимум 2000 символов).',
+        }
+        return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+
+    if contains_profanity(content):
+        viol = register_chat_profanity_violation(user)
+        if viol['banned']:
+            user = User.query.get(current_user.id)
+            session['group_chat_error'] = {
+                'group_id': group.id,
+                'message': format_new_chat_ban_message(viol['hours'])
+                + ' '
+                + format_profanity_chat_blocked_message(user),
+            }
+        else:
+            session['group_chat_error'] = {
+                'group_id': group.id,
+                'message': (
+                    f'{PROFANITY_MSG} (попытка {viol["strikes"]} из {PROFANITY_CHAT_STRIKES_LIMIT} до блокировки чата).'
+                ),
+            }
+        return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+
+    db.session.add(
+        StudyGroupMessage(
+            group_id=group.id,
+            sender_id=current_user.id,
+            content=content,
+        )
+    )
+    db.session.commit()
+    return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+
+
+@app.route('/groups/<int:group_id>/close', methods=['POST'])
+@login_required
+def close_group(group_id):
+    group = StudyGroup.query.get_or_404(group_id)
+    if group.creator_id != current_user.id:
+        flash('Закрыть группу может только создатель.', 'error')
+        return redirect(url_for('group_detail', group_id=group.id))
+
+    group.is_active = False
+    db.session.commit()
+    flash('Группа закрыта.', 'info')
+    return redirect(url_for('groups'))
+
 @app.route('/chat/<int:user_id>')
 @login_required
 def chat(user_id):
@@ -932,12 +1554,19 @@ def chat(user_id):
         db.session.commit()
         
         form = MessageForm()
-        
+        me = User.query.get(current_user.id)
+        chat_blocked = is_user_profanity_chat_blocked(me)
+        chat_blocked_until = me.profanity_blocked_until if chat_blocked else None
+
         print("Рендеринг шаблона чата...")
-        return render_template('chat.html', 
-                             other_user=other_user, 
-                             messages=messages, 
-                             form=form)
+        return render_template(
+            'chat.html',
+            other_user=other_user,
+            messages=messages,
+            form=form,
+            chat_blocked=chat_blocked,
+            chat_blocked_until=chat_blocked_until,
+        )
     
     except Exception as e:
         print(f"Ошибка в функции chat: {e}")
@@ -952,6 +1581,14 @@ def send_message(receiver_id):
     """Отправка сообщения"""
     if not current_user.profile:
         return {'error': 'Профиль не создан'}, 400
+
+    user = User.query.get(current_user.id)
+    if is_user_profanity_chat_blocked(user):
+        return {
+            'success': False,
+            'blocked': True,
+            'error': format_profanity_chat_blocked_message(user),
+        }, 403
     
     # Проверяем, что пользователи являются мэтчами
     match = Match.query.filter(
@@ -963,23 +1600,44 @@ def send_message(receiver_id):
         return {'error': 'Вы можете общаться только с вашими мэтчами'}, 403
     
     form = MessageForm()
-    if form.validate_on_submit():
-        message = Message(
-            sender_id=current_user.id,
-            receiver_id=receiver_id,
-            content=form.content.data
-        )
-        
-        db.session.add(message)
-        db.session.commit()
-        
+    if not form.validate_on_submit():
+        return {'success': False, 'error': 'Ошибка валидации формы', 'errors': form.errors}, 400
+
+    content = (form.content.data or '').strip()
+    if contains_profanity(content):
+        viol = register_chat_profanity_violation(user)
+        if viol['banned']:
+            user = User.query.get(current_user.id)
+            return {
+                'success': False,
+                'blocked': True,
+                'error': format_new_chat_ban_message(viol['hours'])
+                + ' '
+                + format_profanity_chat_blocked_message(user),
+            }, 403
         return {
-            'success': True,
-            'message_id': message.id,
-            'created_at': message.created_at.strftime('%H:%M')
-        }
-    else:
-        return {'error': 'Ошибка валидации формы', 'errors': form.errors}, 400
+            'success': False,
+            'errors': {
+                'content': [
+                    f'{PROFANITY_MSG} (попытка {viol["strikes"]} из {PROFANITY_CHAT_STRIKES_LIMIT} до блокировки чата).'
+                ]
+            },
+        }, 400
+
+    message = Message(
+        sender_id=current_user.id,
+        receiver_id=receiver_id,
+        content=content,
+    )
+
+    db.session.add(message)
+    db.session.commit()
+
+    return {
+        'success': True,
+        'message_id': message.id,
+        'created_at': message.created_at.strftime('%H:%M'),
+    }
 
 @app.route('/get-messages/<int:user_id>')
 @login_required
@@ -1064,6 +1722,21 @@ def admin_delete_user(user_id):
     Like.query.filter(or_(Like.liker_id == user_id, Like.liked_id == user_id)).delete(synchronize_session=False)
     Match.query.filter(or_(Match.user1_id == user_id, Match.user2_id == user_id)).delete(synchronize_session=False)
     Message.query.filter(or_(Message.sender_id == user_id, Message.receiver_id == user_id)).delete(synchronize_session=False)
+
+    created_group_ids = [
+        row[0]
+        for row in db.session.query(StudyGroup.id).filter(StudyGroup.creator_id == user_id).all()
+    ]
+    if created_group_ids:
+        StudyGroupMessage.query.filter(
+            StudyGroupMessage.group_id.in_(created_group_ids)
+        ).delete(synchronize_session=False)
+        StudyGroupMembership.query.filter(
+            StudyGroupMembership.group_id.in_(created_group_ids)
+        ).delete(synchronize_session=False)
+    StudyGroupMessage.query.filter(StudyGroupMessage.sender_id == user_id).delete(synchronize_session=False)
+    StudyGroupMembership.query.filter(StudyGroupMembership.user_id == user_id).delete(synchronize_session=False)
+    StudyGroup.query.filter(StudyGroup.creator_id == user_id).delete(synchronize_session=False)
 
     db.session.delete(user)
     db.session.commit()

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "macros/forms.html" import field_errors %}
+
+{% block title %}Создать группу - StudyTinder{% endblock %}
+
+{% block content %}
+<div class="card groups-form-card">
+    <div class="groups-page-header">
+        <div>
+            <h2>Создать учебную группу</h2>
+            <p>Соберите однокурсников и договоритесь о совместных занятиях.</p>
+        </div>
+    </div>
+
+    <form method="POST" class="groups-form">
+        {{ form.hidden_tag() }}
+
+        <div class="form-group">
+            {{ form.title.label(class="form-label") }}
+            {{ form.title(class="form-input", placeholder="Например: Подготовка к экзамену по вышмату") }}
+            {{ field_errors(form.title) }}
+        </div>
+
+        <div class="groups-form-grid">
+            <div class="form-group">
+                {{ form.subject.label(class="form-label") }}
+                {{ form.subject(class="form-input", placeholder="Предмет") }}
+                {{ field_errors(form.subject) }}
+            </div>
+
+            <div class="form-group">
+                {{ form.meeting_format.label(class="form-label") }}
+                {{ form.meeting_format(class="form-input") }}
+                {{ field_errors(form.meeting_format) }}
+            </div>
+        </div>
+
+        <div class="groups-form-grid">
+            <div class="form-group">
+                {{ form.city.label(class="form-label") }}
+                {{ form.city(class="form-input", placeholder="Необязательно") }}
+                {{ field_errors(form.city) }}
+            </div>
+
+            <div class="form-group">
+                {{ form.max_members.label(class="form-label") }}
+                {{ form.max_members(class="form-input", placeholder="Например: 10", min="2", max="200") }}
+                {{ field_errors(form.max_members) }}
+            </div>
+        </div>
+
+        <div class="form-group">
+            {{ form.description.label(class="form-label") }}
+            {{ form.description(class="form-input groups-textarea", placeholder="Какие темы изучаете, как часто встречаетесь, кого ищете?") }}
+            {{ field_errors(form.description) }}
+        </div>
+
+        <div class="groups-form-actions">
+            {{ form.submit(class="btn btn-primary") }}
+            <a href="{{ url_for('groups') }}" class="btn btn-outline">Отмена</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

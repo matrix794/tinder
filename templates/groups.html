@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Учебные группы - StudyTinder{% endblock %}
+
+{% block content %}
+<div class="card groups-page">
+    <div class="groups-page-header">
+        <div>
+            <h2>Учебные группы</h2>
+            <p>Создавайте группы по предметам, собирайте участников и учитесь вместе.</p>
+        </div>
+        <a href="{{ url_for('create_group') }}" class="btn btn-primary">Создать группу</a>
+    </div>
+
+    <form method="GET" class="groups-filter">
+        <div class="form-group">
+            <label class="form-label" for="subject">Предмет</label>
+            <input id="subject" type="text" name="subject" class="form-input" placeholder="Например: математика" value="{{ subject }}">
+        </div>
+
+        <div class="form-group">
+            <label class="form-label" for="format">Формат</label>
+            <select id="format" name="format" class="form-input">
+                <option value="">Любой</option>
+                <option value="online" {% if format_filter == 'online' %}selected{% endif %}>Онлайн</option>
+                <option value="offline" {% if format_filter == 'offline' %}selected{% endif %}>Очно</option>
+                <option value="hybrid" {% if format_filter == 'hybrid' %}selected{% endif %}>Смешанный</option>
+            </select>
+        </div>
+
+        <div class="groups-filter-actions">
+            <button type="submit" class="btn btn-secondary">Найти</button>
+            <a href="{{ url_for('groups') }}" class="btn btn-outline">Сбросить</a>
+        </div>
+    </form>
+
+    {% if groups %}
+        <div class="groups-grid">
+            {% for group in groups %}
+                {% set member_count = member_counts.get(group.id, 0) %}
+                <article class="group-card">
+                    <div class="group-card-top">
+                        <h3><a href="{{ url_for('group_detail', group_id=group.id) }}">{{ group.title }}</a></h3>
+                        {% if group.creator_id == current_user.id %}
+                            <span class="badge badge-success">Создатель</span>
+                        {% elif group.id in joined_group_ids %}
+                            <span class="badge">Участник</span>
+                        {% endif %}
+                    </div>
+
+                    <p class="group-card-subject">
+                        {{ group.subject }} • {{ meeting_format_labels.get(group.meeting_format, group.meeting_format) }}
+                    </p>
+
+                    <p class="group-card-desc">
+                        {% if group.description|length > 170 %}
+                            {{ group.description[:170] }}...
+                        {% else %}
+                            {{ group.description }}
+                        {% endif %}
+                    </p>
+
+                    <div class="group-card-meta">
+                        <span>Участники: {{ member_count }}{% if group.max_members %}/{{ group.max_members }}{% endif %}</span>
+                        {% if group.city %}
+                            <span>{{ group.city }}</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="group-card-actions">
+                        <a class="btn btn-secondary" href="{{ url_for('group_detail', group_id=group.id) }}">Открыть</a>
+
+                        {% if group.id in joined_group_ids %}
+                            <form method="POST" action="{{ url_for('leave_group', group_id=group.id) }}">
+                                <button type="submit" class="btn btn-outline">Покинуть</button>
+                            </form>
+                        {% elif group.max_members and member_count >= group.max_members %}
+                            <button type="button" class="btn btn-outline" disabled>Группа заполнена</button>
+                        {% else %}
+                            <form method="POST" action="{{ url_for('join_group', group_id=group.id) }}">
+                                <button type="submit" class="btn btn-primary">Вступить</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </article>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="groups-empty">
+            <h3>Группы не найдены</h3>
+            <p>Попробуйте изменить фильтры или создайте первую учебную группу.</p>
+            <a href="{{ url_for('create_group') }}" class="btn btn-primary">Создать группу</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

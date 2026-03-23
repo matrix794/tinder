@@ -1,4 +1,5 @@
 {% extends "create_profile.html" %}
+{% from "macros/forms.html" import field_errors %}
 
 {% block title %}Редактирование профиля - Tinder для учебы{% endblock %}
 
@@ -16,51 +17,33 @@
             <div class="form-group">
                 {{ form.full_name.label(class="form-label") }}
                 {{ form.full_name(class="form-input") }}
-                {% if form.full_name.errors %}
-                    <div class="form-errors">
-                        {% for error in form.full_name.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
+                {{ field_errors(form.full_name) }}
             </div>
 
             <div class="form-row">
                 <div class="form-group">
                     {{ form.university.label(class="form-label") }}
                     {{ form.university(class="form-input") }}
-                    {% if form.university.errors %}
-                        <div class="form-errors">
-                            {% for error in form.university.errors %}
-                                <span class="error">{{ error }}</span>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
+                    {{ field_errors(form.university) }}
                 </div>
 
                 <div class="form-group">
                     {{ form.faculty.label(class="form-label") }}
                     {{ form.faculty(class="form-input") }}
-                    {% if form.faculty.errors %}
-                        <div class="form-errors">
-                            {% for error in form.faculty.errors %}
-                                <span class="error">{{ error }}</span>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
+                    {{ field_errors(form.faculty) }}
                 </div>
+            </div>
+
+            <div class="form-group">
+                {{ form.city.label(class="form-label") }}
+                {{ form.city(class="form-input") }}
+                {{ field_errors(form.city) }}
             </div>
 
             <div class="form-group">
                 {{ form.course.label(class="form-label") }}
                 {{ form.course(class="form-select") }}
-                {% if form.course.errors %}
-                    <div class="form-errors">
-                        {% for error in form.course.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
+                {{ field_errors(form.course) }}
             </div>
         </div>
 
@@ -70,25 +53,13 @@
             <div class="form-group">
                 {{ form.subjects.label(class="form-label") }}
                 {{ form.subjects(class="form-textarea") }}
-                {% if form.subjects.errors %}
-                    <div class="form-errors">
-                        {% for error in form.subjects.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
+                {{ field_errors(form.subjects) }}
             </div>
 
             <div class="form-group">
                 {{ form.interests.label(class="form-label") }}
                 {{ form.interests(class="form-textarea") }}
-                {% if form.interests.errors %}
-                    <div class="form-errors">
-                        {% for error in form.interests.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
+                {{ field_errors(form.interests) }}
             </div>
         </div>
 
@@ -98,55 +69,126 @@
             <div class="form-group">
                 {{ form.description.label(class="form-label") }}
                 {{ form.description(class="form-textarea") }}
-                {% if form.description.errors %}
-                    <div class="form-errors">
-                        {% for error in form.description.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
+                {{ field_errors(form.description) }}
             </div>
 
             <div class="form-group">
                 {{ form.goals.label(class="form-label") }}
                 {{ form.goals(class="form-textarea") }}
-                {% if form.goals.errors %}
-                    <div class="form-errors">
-                        {% for error in form.goals.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
+                {{ field_errors(form.goals) }}
             </div>
         </div>
 
-        <div class="form-section">
-            <h3>Предпочтения по партнеру</h3>
-            
-            <div class="form-group">
-                {{ form.preferred_subjects.label(class="form-label") }}
-                {{ form.preferred_subjects(class="form-textarea") }}
-                {% if form.preferred_subjects.errors %}
-                    <div class="form-errors">
-                        {% for error in form.preferred_subjects.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
+        <div class="form-section edit-pref-section">
+            <div class="ps-step-header">
+              <div class="ps-icon ps-icon-purple">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              </div>
+              <div>
+                <h2 class="ps-title">Предпочтения поиска</h2>
+                <p class="ps-subtitle">Кого хотите видеть в ленте?</p>
+              </div>
             </div>
 
-            <div class="form-group">
-                {{ form.preferred_course.label(class="form-label") }}
-                {{ form.preferred_course(class="form-select") }}
-                {% if form.preferred_course.errors %}
-                    <div class="form-errors">
-                        {% for error in form.preferred_course.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
+            <div class="ps-fields">
+              <div class="ps-field-group">
+                <label class="ps-label">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  Город партнёра
+                </label>
+                {{ form.preferred_city(class="ps-input", placeholder="Москва, Санкт-Петербург...") }}
+                <small class="ps-hint">Оставьте пустым, чтобы видеть всех</small>
+                {{ field_errors(form.preferred_city) }}
+              </div>
+
+              <div class="ps-field-group">
+                <label class="ps-label">Курс партнёра</label>
+                {{ form.preferred_course(class="ps-select") }}
+                {{ field_errors(form.preferred_course) }}
+              </div>
+
+              <!-- Hidden field for preferred subjects -->
+              {{ form.preferred_subjects(class="ps-hidden-field", id="editPrefSubjectsHidden") }}
+              <div class="ps-field-group">
+                <label class="ps-label">Добавить свой предмет</label>
+                <div class="ps-subject-add-row">
+                  <div class="ps-custom-input-wrap">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="ps-input-icon"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    <input type="text" id="editPrefCustomSubjectInput" placeholder="Введите название предмета..." class="ps-input ps-input-with-icon" />
+                  </div>
+                  <button type="button" class="ps-add-btn" id="editPrefAddSubjectBtn">Добавить</button>
+                </div>
+                <p class="ps-hint">💡 Нажмите Enter или кнопку "Добавить"</p>
+                {{ field_errors(form.preferred_subjects) }}
+              </div>
+
+              <div class="ps-selected-subjects-wrap" id="editPrefSelectedWrap" style="display:none">
+                <div class="ps-subjects-meta">
+                  <span class="ps-muted" id="editPrefSelectedCount">Выбрано: 0</span>
+                  <button type="button" class="ps-clear-btn" id="editPrefClearAllBtn">Очистить всё</button>
+                </div>
+                <p class="ps-label" style="margin-bottom:8px">Выбранные предметы:</p>
+                <div class="ps-tags-wrap" id="editPrefSelectedSubjectTags"></div>
+              </div>
+
+              <div class="ps-field-group">
+                <p class="ps-label" style="margin-bottom:8px">Популярные предметы:</p>
+                <div class="ps-tags-wrap ps-tags-collapsible" id="editPrefPopularSubjectTags">
+                  <button type="button" class="ps-tag" data-subject="Высшая математика">Высшая математика</button>
+                  <button type="button" class="ps-tag" data-subject="Программирование">Программирование</button>
+                  <button type="button" class="ps-tag" data-subject="Физика">Физика</button>
+                  <button type="button" class="ps-tag" data-subject="Химия">Химия</button>
+                  <button type="button" class="ps-tag" data-subject="Английский язык">Английский язык</button>
+                  <button type="button" class="ps-tag" data-subject="Алгоритмы">Алгоритмы</button>
+                  <button type="button" class="ps-tag" data-subject="Базы данных">Базы данных</button>
+                  <button type="button" class="ps-tag" data-subject="Экономика">Экономика</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Статистика">Статистика</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Machine Learning">Machine Learning</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Маркетинг">Маркетинг</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Финансы">Финансы</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Линейная алгебра">Линейная алгебра</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Дискретная математика">Дискретная математика</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Теория вероятностей">Теория вероятностей</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Информатика">Информатика</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Веб-разработка">Веб-разработка</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Data Science">Data Science</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Философия">Философия</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="История">История</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Биология">Биология</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Право">Право</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Психология">Психология</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Менеджмент">Менеджмент</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Иностранные языки">Иностранные языки</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Экология">Экология</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Медицина">Медицина</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Журналистика">Журналистика</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Дизайн">Дизайн</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="География">География</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Социология">Социология</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Культурология">Культурология</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Политология">Политология</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Искусствоведение">Искусствоведение</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Радиофизика">Радиофизика</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Биоинформатика">Биоинформатика</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Астрономия">Астрономия</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Робототехника">Робототехника</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Микроэкономика">Микроэкономика</button>
+                  <button type="button" class="ps-tag ps-tag-extra" data-subject="Макроэкономика">Макроэкономика</button>
+                  
+                  <button type="button" class="ps-tags-toggle" data-target="editPrefPopularSubjectTags">Ещё <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></button>
+                </div>
+              </div>
+
+              <div class="ps-field-group">
+                <label class="ps-check-label">
+                  {{ form.prefer_photo_only(class="ps-checkbox") }}
+                  <span>Показывать только профили с фото</span>
+                </label>
+                {{ field_errors(form.prefer_photo_only) }}
+              </div>
             </div>
         </div>
+
 
         <div class="form-section">
             <h3>Контактная информация</h3>
@@ -155,25 +197,13 @@
                 <div class="form-group">
                     {{ form.telegram.label(class="form-label") }}
                     {{ form.telegram(class="form-input") }}
-                    {% if form.telegram.errors %}
-                        <div class="form-errors">
-                            {% for error in form.telegram.errors %}
-                                <span class="error">{{ error }}</span>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
+                    {{ field_errors(form.telegram) }}
                 </div>
 
                 <div class="form-group">
                     {{ form.discord.label(class="form-label") }}
                     {{ form.discord(class="form-input") }}
-                    {% if form.discord.errors %}
-                        <div class="form-errors">
-                            {% for error in form.discord.errors %}
-                                <span class="error">{{ error }}</span>
-                            {% endfor %}
-                        </div>
-                    {% endif %}
+                    {{ field_errors(form.discord) }}
                 </div>
             </div>
         </div>
@@ -192,13 +222,7 @@
                 {{ form.photo.label(class="form-label") }}
                 {{ form.photo(class="form-file") }}
                 <div class="form-help">Загрузите новое фото профиля (JPG, PNG, GIF). Максимальный размер: 5MB</div>
-                {% if form.photo.errors %}
-                    <div class="form-errors">
-                        {% for error in form.photo.errors %}
-                            <span class="error">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                {% endif %}
+                {{ field_errors(form.photo) }}
             </div>
         </div>
 
@@ -207,4 +231,80 @@
         </div>
     </form>
 </section>
+
+<script>
+(function() {
+  var hidden   = document.getElementById('editPrefSubjectsHidden');
+  var selWrap  = document.getElementById('editPrefSelectedWrap');
+  var selTags  = document.getElementById('editPrefSelectedSubjectTags');
+  var selCount = document.getElementById('editPrefSelectedCount');
+  var custIn   = document.getElementById('editPrefCustomSubjectInput');
+  var addBtn   = document.getElementById('editPrefAddSubjectBtn');
+  var clearBtn = document.getElementById('editPrefClearAllBtn');
+
+  if (!hidden) return;
+
+  // Pre-fill from the existing saved value
+  var selected = (hidden.value || '').split(',').map(s => s.trim()).filter(Boolean);
+
+  function xIcon() {
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+  }
+
+  function syncUI() {
+    hidden.value = selected.join(', ');
+    selCount.textContent = 'Выбрано: ' + selected.length;
+
+    if (selected.length > 0) {
+      selWrap.style.display = 'block';
+      selTags.innerHTML = '';
+      selected.forEach(function(subj) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ps-tag ps-tag-selected';
+        btn.innerHTML = subj + ' ' + xIcon();
+        btn.addEventListener('click', function() { toggle(subj); });
+        selTags.appendChild(btn);
+      });
+    } else {
+      selWrap.style.display = 'none';
+    }
+
+    document.querySelectorAll('#editPrefPopularSubjectTags .ps-tag').forEach(function(btn) {
+      var subj = btn.dataset.subject;
+      if (selected.indexOf(subj) >= 0) {
+        btn.classList.add('ps-tag-selected-dimmed');
+        btn.innerHTML = subj + ' ' + xIcon();
+      } else {
+        btn.classList.remove('ps-tag-selected-dimmed');
+        btn.textContent = subj;
+      }
+    });
+  }
+
+  function toggle(subj) {
+    var idx = selected.indexOf(subj);
+    if (idx >= 0) { selected.splice(idx, 1); } else { selected.push(subj); }
+    syncUI();
+  }
+
+  document.querySelectorAll('#editPrefPopularSubjectTags .ps-tag').forEach(function(btn) {
+    btn.addEventListener('click', function() { toggle(btn.dataset.subject); });
+  });
+
+  function addCustom() {
+    var val = custIn.value.trim();
+    if (val && selected.indexOf(val) < 0) { selected.push(val); custIn.value = ''; syncUI(); }
+  }
+
+  addBtn.addEventListener('click', addCustom);
+  custIn.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); addCustom(); }
+  });
+  clearBtn.addEventListener('click', function() { selected = []; syncUI(); });
+
+  // Init
+  syncUI();
+})();
+</script>
 {% endblock %}
