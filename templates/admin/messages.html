@@ -36,7 +36,21 @@
                                 <span class="meta">@{{ message.receiver.username }}</span>
                             </td>
                             <td>
+                                {% if message.deleted_at %}
+                                <div class="message-bubble">Сообщение удалено</div>
+                                {% elif message.content %}
                                 <div class="message-bubble">{{ message.content }}</div>
+                                {% endif %}
+                                {% if message.attachment_filename and not message.deleted_at %}
+                                <div class="message-bubble">
+                                    <a href="{{ url_for('uploaded_file', filename=message.attachment_filename) }}" target="_blank" rel="noopener">
+                                        {{ message.attachment_original_name or message.attachment_filename }}
+                                    </a>
+                                </div>
+                                {% endif %}
+                                {% if not message.deleted_at and not message.content and not message.attachment_filename %}
+                                <div class="message-bubble">—</div>
+                                {% endif %}
                             </td>
                         </tr>
                     {% endfor %}

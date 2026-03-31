@@ -76,12 +76,25 @@
                 <span class="group-chat-readonly">Только чтение</span>
             {% endif %}
         </div>
-
+        <div class="group-chat-pinned" id="groupChatPinned" style="display:none;">
+            <div class="group-chat-pinned-body">
+                <span class="group-chat-pinned-label">Закрепленное</span>
+                <button type="button" class="group-chat-pinned-text" id="groupPinnedJumpBtn"></button>
+            </div>
+            <button type="button" class="group-chat-pinned-close" id="groupPinnedCloseBtn" aria-label="Снять закреп">✕</button>
+        </div>
         {% if membership %}
             <div class="group-chat-messages">
                 {% if group_messages %}
                     {% for message, sender, sender_profile in group_messages %}
-                        <article class="group-chat-message {% if message.sender_id == current_user.id %}is-own{% endif %}">
+                        <article
+                            class="group-chat-message {% if message.sender_id == current_user.id %}is-own{% endif %}"
+                            data-message-id="{{ message.id }}"
+                            data-sender-name="{{ sender_profile.full_name if sender_profile else sender.username }}"
+                            data-content="{{ (message.content or '')|replace('\n', ' ') }}"
+                            data-preview="{% if message.deleted_at %}Сообщение удалено{% elif message.content %}{{ message.content|replace('\n', ' ')|truncate(80, true, '…') }}{% elif message.attachment_filename %}{{ '[Фотография]' if (message.attachment_type == 'image' or (not message.attachment_type and (message.attachment_filename.rsplit('.', 1)[-1]|lower in ['png', 'jpg', 'jpeg', 'gif', 'webp']))) else '[Файл]' }}{% endif %}"
+                            data-attachment-label="{% if message.attachment_filename %}{{ '[Фотография]' if (message.attachment_type == 'image' or (not message.attachment_type and (message.attachment_filename.rsplit('.', 1)[-1]|lower in ['png', 'jpg', 'jpeg', 'gif', 'webp']))) else '[Файл]' }}{% endif %}"
+                        >
                             <div class="group-chat-message-meta">
                                 <span class="group-chat-message-author">
                                     {% if sender_profile %}
@@ -90,9 +103,86 @@
                                         {{ sender.username }}
                                     {% endif %}
                                 </span>
-                                <span class="group-chat-message-time">{{ message.created_at.strftime('%d.%m %H:%M') }}</span>
+                                <span class="group-chat-message-time">{{ message.created_at.strftime('%d.%m %H:%M') }}{% if message.edited_at and not message.deleted_at %} В· изм.{% endif %}</span>
                             </div>
+                            {% if message.reply_to %}
+                                <div class="group-chat-message-reply" data-reply-id="{{ message.reply_to.id }}" role="button" tabindex="0" title="Перейти к сообщению">
+                                    <span class="group-chat-message-reply-author">
+                                        {{ message.reply_to.sender.profile.full_name if message.reply_to.sender and message.reply_to.sender.profile else (message.reply_to.sender.username if message.reply_to.sender else 'Пользователь') }}
+                                    </span>
+                                    <span class="group-chat-message-reply-text">
+                                        {% if message.reply_to.deleted_at %}
+                                            Сообщение удалено
+                                        {% elif message.reply_to.content %}
+                                            {{ message.reply_to.content|replace('\n', ' ')|truncate(80, true, '…') }}
+                                        {% elif message.reply_to.attachment_filename %}
+                                            {{ '[Фотография]' if (message.reply_to.attachment_type == 'image' or (not message.reply_to.attachment_type and (message.reply_to.attachment_filename.rsplit('.', 1)[-1]|lower in ['png', 'jpg', 'jpeg', 'gif', 'webp']))) else '[Файл]' }}
+                                        {% endif %}
+                                    </span>
+                                </div>
+                            {% endif %}
+                            {% if message.deleted_at %}
+                            <p class="group-chat-message-content group-chat-message-deleted">Сообщение удалено</p>
+                            {% elif message.content %}
                             <p class="group-chat-message-content">{{ message.content }}</p>
+                            {% endif %}
+                            {% if message.attachment_filename and not message.deleted_at %}
+                                {% set attachment_url = url_for('uploaded_file', filename=message.attachment_filename) %}
+                                {% set attachment_ext = message.attachment_filename.rsplit('.', 1)[-1]|lower if '.' in message.attachment_filename else '' %}
+                                {% set attachment_kind = message.attachment_type or ('image' if attachment_ext in ['png', 'jpg', 'jpeg', 'gif', 'webp'] else 'file') %}
+                                {% if attachment_kind == 'image' %}
+                                <a class="group-chat-message-attachment group-chat-message-attachment-image" href="{{ attachment_url }}" target="_blank" rel="noopener">
+                                    <img src="{{ attachment_url }}" alt="{{ message.attachment_original_name or 'Изображение' }}">
+                                </a>
+                                {% else %}
+                                <a class="group-chat-message-attachment group-chat-message-attachment-file" href="{{ attachment_url }}" target="_blank" rel="noopener">
+                                    <span class="group-chat-file-icon">FILE</span>
+                                    <span class="group-chat-file-name">{{ message.attachment_original_name or message.attachment_filename }}</span>
+                                </a>
+                                {% endif %}
+                            {% endif %}
+                            {% if group.is_active and not message.deleted_at %}
+                            <div class="group-chat-message-actions">
+                                <button type="button" class="group-chat-message-menu-toggle" title="Действия" aria-label="Действия" aria-haspopup="true" aria-expanded="false">⋯</button>
+                                <div class="group-chat-message-menu" role="menu">
+                                    <button type="button" class="group-chat-message-menu-item" data-action="reply">
+                                        <span class="group-chat-message-menu-icon">↩</span>
+                                        <span>Ответить</span>
+                                    </button>
+                                    {% if message.sender_id == current_user.id %}
+                                    <button
+                                        type="button"
+                                        class="group-chat-message-menu-item"
+                                        data-action="edit"
+                                        data-edit-url="{{ url_for('edit_group_message', group_id=group.id, message_id=message.id) }}"
+                                        data-message-content="{{ (message.content or '')|replace('\n', ' ') }}"
+                                    >
+                                        <span class="group-chat-message-menu-icon">✎</span>
+                                        <span>Изменить</span>
+                                    </button>
+                                    {% endif %}
+                                    <button type="button" class="group-chat-message-menu-item" data-action="pin">
+                                        <span class="group-chat-message-menu-icon">⌖</span>
+                                        <span>Закрепить</span>
+                                    </button>
+                                    <button type="button" class="group-chat-message-menu-item" data-action="copy">
+                                        <span class="group-chat-message-menu-icon">⧉</span>
+                                        <span>Копировать текст</span>
+                                    </button>
+                                    {% if message.sender_id == current_user.id %}
+                                    <button
+                                        type="button"
+                                        class="group-chat-message-menu-item danger"
+                                        data-action="delete"
+                                        data-delete-url="{{ url_for('delete_group_message', group_id=group.id, message_id=message.id) }}"
+                                    >
+                                        <span class="group-chat-message-menu-icon">✕</span>
+                                        <span>Удалить</span>
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            {% endif %}
                         </article>
                     {% endfor %}
                 {% else %}
@@ -111,25 +201,69 @@
                     {% endif %}
                 </div>
                 {% endif %}
-                <form method="POST" action="{{ url_for('send_group_message', group_id=group.id) }}" class="group-chat-form">
+                <form method="POST" action="{{ url_for('send_group_message', group_id=group.id) }}" class="group-chat-form" enctype="multipart/form-data" id="groupChatForm">
+                    <input type="hidden" name="reply_to_id" id="groupReplyToId">
+                    <div id="groupReplyPreview" class="group-chat-reply-preview" style="display:none;">
+                        <div class="group-chat-reply-preview-body">
+                            <span class="group-chat-reply-preview-author" id="groupReplyPreviewAuthor"></span>
+                            <span class="group-chat-reply-preview-text" id="groupReplyPreviewText"></span>
+                        </div>
+                        <button type="button" class="group-chat-reply-preview-close" id="groupClearReplyBtn" aria-label="Отменить ответ">✕</button>
+                    </div>
                     <textarea
                         name="content"
+                        id="groupChatInput"
                         class="form-input group-chat-input"
                         placeholder="{% if chat_blocked|default(false) %}Отправка недоступна{% else %}Напишите сообщение для группы...{% endif %}"
                         rows="3"
                         maxlength="2000"
-                        {% if not chat_blocked|default(false) %}required{% endif %}
                         {% if chat_blocked|default(false) %}disabled{% endif %}
                     ></textarea>
+                    <input
+                        type="file"
+                        name="attachment"
+                        id="groupAttachmentInput"
+                        class="group-chat-attachment-input"
+                        accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.csv,.zip,.rar,.7z,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+                        {% if chat_blocked|default(false) %}disabled{% endif %}
+                    >
+                    <div id="groupAttachmentPreview" class="group-chat-attachment-preview" style="display:none;"></div>
                     {% if group_chat_field_error %}
                     <div class="form-errors group-chat-field-errors" role="alert">
                         <span class="error">{{ group_chat_field_error }}</span>
                     </div>
                     {% endif %}
                     <div class="group-chat-form-actions">
-                        <button type="submit" class="btn btn-primary" {% if chat_blocked|default(false) %}disabled{% endif %}>Отправить</button>
+                        <button
+                            type="button"
+                            id="groupAttachBtn"
+                            class="group-chat-icon-btn group-chat-attach-btn"
+                            aria-label="Прикрепить файл"
+                            title="Прикрепить файл"
+                            {% if chat_blocked|default(false) %}disabled{% endif %}
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M21.44 11.05 12.95 19.54a5.5 5.5 0 1 1-7.78-7.78l9.19-9.19a3.5 3.5 0 1 1 4.95 4.95l-9.2 9.19a1.5 1.5 0 1 1-2.12-2.12l8.49-8.48"/>
+                            </svg>
+                        </button>
+                        <button
+                            type="submit"
+                            class="btn btn-primary group-chat-send-btn"
+                            aria-label="Отправить"
+                            title="Отправить"
+                            {% if chat_blocked|default(false) %}disabled{% endif %}
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M22 2 11 13"/>
+                                <path d="M22 2 15 22 11 13 2 9 22 2z"/>
+                            </svg>
+                        </button>
                     </div>
                 </form>
+                <form method="POST" id="groupEditMessageForm" style="display:none;">
+                    <input type="hidden" name="content" id="groupEditContent">
+                </form>
+                <form method="POST" id="groupDeleteMessageForm" style="display:none;"></form>
             {% else %}
                 <p class="group-chat-empty">Группа закрыта. Добавление сообщений отключено.</p>
             {% endif %}
@@ -138,4 +272,292 @@
         {% endif %}
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const groupChatForm = document.getElementById('groupChatForm');
+    const groupAttachmentInput = document.getElementById('groupAttachmentInput');
+    const groupAttachBtn = document.getElementById('groupAttachBtn');
+    const groupAttachmentPreview = document.getElementById('groupAttachmentPreview');
+    const groupReplyToId = document.getElementById('groupReplyToId');
+    const groupReplyPreview = document.getElementById('groupReplyPreview');
+    const groupReplyPreviewAuthor = document.getElementById('groupReplyPreviewAuthor');
+    const groupReplyPreviewText = document.getElementById('groupReplyPreviewText');
+    const groupClearReplyBtn = document.getElementById('groupClearReplyBtn');
+    const groupChatInput = document.getElementById('groupChatInput');
+    const groupMessages = document.querySelector('.group-chat-messages');
+    const groupEditMessageForm = document.getElementById('groupEditMessageForm');
+    const groupEditContent = document.getElementById('groupEditContent');
+    const groupDeleteMessageForm = document.getElementById('groupDeleteMessageForm');
+    const groupChatPinned = document.getElementById('groupChatPinned');
+    const groupPinnedJumpBtn = document.getElementById('groupPinnedJumpBtn');
+    const groupPinnedCloseBtn = document.getElementById('groupPinnedCloseBtn');
+    const deletedLabel = 'Сообщение удалено';
+    let groupPinnedMessageId = null;
+
+    if (!groupChatForm) return;
+
+    function formatFileSize(bytes) {
+        const value = Number(bytes || 0);
+        if (value < 1024) return `${value} Б`;
+        if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} КБ`;
+        return `${(value / (1024 * 1024)).toFixed(1)} МБ`;
+    }
+
+    function trimText(text, limit) {
+        const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+        if (normalized.length <= limit) return normalized;
+        return `${normalized.slice(0, limit - 1)}…`;
+    }
+
+    function setGroupReplyTarget(target) {
+        if (!groupReplyToId || !groupReplyPreview || !groupReplyPreviewAuthor || !groupReplyPreviewText) return;
+        if (!target || !target.id) {
+            groupReplyToId.value = '';
+            groupReplyPreview.style.display = 'none';
+            groupReplyPreviewAuthor.textContent = '';
+            groupReplyPreviewText.textContent = '';
+            return;
+        }
+        groupReplyToId.value = String(target.id);
+        groupReplyPreview.style.display = 'flex';
+        groupReplyPreviewAuthor.textContent = target.senderName || 'Пользователь';
+        groupReplyPreviewText.textContent = trimText(target.preview || '', 80);
+    }
+
+    function getGroupMessageTarget(messageEl) {
+        if (!messageEl) return null;
+        const id = Number(messageEl.dataset.messageId || 0);
+        if (!id) return null;
+        const senderName = messageEl.dataset.senderName || 'Пользователь';
+        const preview = trimText(messageEl.dataset.preview || messageEl.dataset.content || messageEl.dataset.attachmentLabel || deletedLabel, 80);
+        return { id, senderName, preview };
+    }
+
+    function closeGroupMessageMenus(exceptActions) {
+        if (!groupMessages) return;
+        groupMessages.querySelectorAll('.group-chat-message-actions.is-open').forEach(function(actions) {
+            if (exceptActions && actions === exceptActions) return;
+            actions.classList.remove('is-open');
+            const toggle = actions.querySelector('.group-chat-message-menu-toggle');
+            if (toggle) {
+                toggle.setAttribute('aria-expanded', 'false');
+            }
+        });
+    }
+
+    function jumpToGroupMessage(messageId) {
+        if (!groupMessages || !messageId) return;
+        const target = groupMessages.querySelector(`.group-chat-message[data-message-id="${messageId}"]`);
+        if (!target) return;
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.classList.add('group-chat-message-highlight');
+        window.setTimeout(function() {
+            target.classList.remove('group-chat-message-highlight');
+        }, 1400);
+    }
+
+    function setGroupPinnedMessage(target) {
+        if (!groupChatPinned || !groupPinnedJumpBtn) return;
+        if (!target || !target.id) {
+            groupPinnedMessageId = null;
+            groupChatPinned.style.display = 'none';
+            groupPinnedJumpBtn.textContent = '';
+            return;
+        }
+        groupPinnedMessageId = Number(target.id);
+        const previewText = trimText(target.preview || deletedLabel, 90) || deletedLabel;
+        groupPinnedJumpBtn.textContent = `${target.senderName || 'Пользователь'}: ${previewText}`;
+        groupChatPinned.style.display = 'flex';
+    }
+
+    function copyGroupMessageText(messageEl) {
+        if (!messageEl) return Promise.reject(new Error('message missing'));
+        const text = String(messageEl.dataset.content || '').trim() || String(messageEl.dataset.attachmentLabel || '').trim();
+        if (!text) return Promise.reject(new Error('text missing'));
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text);
+        }
+        return new Promise(function(resolve, reject) {
+            try {
+                const area = document.createElement('textarea');
+                area.value = text;
+                area.setAttribute('readonly', '');
+                area.style.position = 'fixed';
+                area.style.top = '-9999px';
+                document.body.appendChild(area);
+                area.focus();
+                area.select();
+                document.execCommand('copy');
+                area.remove();
+                resolve();
+            } catch (err) {
+                reject(err);
+            }
+        });
+    }
+
+    function updateGroupAttachmentPreview() {
+        if (!groupAttachmentInput || !groupAttachmentPreview) return;
+        if (!groupAttachmentInput.files || !groupAttachmentInput.files.length) {
+            groupAttachmentPreview.style.display = 'none';
+            groupAttachmentPreview.textContent = '';
+            return;
+        }
+        const selected = groupAttachmentInput.files[0];
+        groupAttachmentPreview.style.display = 'block';
+        groupAttachmentPreview.textContent = `Вложение: ${selected.name} (${formatFileSize(selected.size)})`;
+    }
+
+    if (groupClearReplyBtn) {
+        groupClearReplyBtn.addEventListener('click', function() {
+            setGroupReplyTarget(null);
+        });
+    }
+
+    if (groupPinnedCloseBtn) {
+        groupPinnedCloseBtn.addEventListener('click', function() {
+            setGroupPinnedMessage(null);
+        });
+    }
+
+    if (groupPinnedJumpBtn) {
+        groupPinnedJumpBtn.addEventListener('click', function() {
+            if (groupPinnedMessageId) {
+                jumpToGroupMessage(groupPinnedMessageId);
+            }
+        });
+    }
+
+    if (groupMessages) {
+        groupMessages.addEventListener('click', function(event) {
+            const replyBlock = event.target.closest('.group-chat-message-reply[data-reply-id]');
+            if (replyBlock) {
+                const replyId = Number(replyBlock.dataset.replyId || 0);
+                if (replyId) {
+                    jumpToGroupMessage(replyId);
+                }
+                return;
+            }
+
+            const toggleBtn = event.target.closest('.group-chat-message-menu-toggle');
+            if (toggleBtn) {
+                event.preventDefault();
+                event.stopPropagation();
+                const actions = toggleBtn.closest('.group-chat-message-actions');
+                if (!actions) return;
+                const isOpen = actions.classList.contains('is-open');
+                closeGroupMessageMenus(actions);
+                if (isOpen) {
+                    actions.classList.remove('is-open');
+                    toggleBtn.setAttribute('aria-expanded', 'false');
+                } else {
+                    actions.classList.add('is-open');
+                    toggleBtn.setAttribute('aria-expanded', 'true');
+                }
+                return;
+            }
+
+            const actionBtn = event.target.closest('.group-chat-message-menu-item');
+            if (!actionBtn) return;
+
+            const messageEl = actionBtn.closest('.group-chat-message');
+            if (!messageEl) return;
+
+            const action = actionBtn.dataset.action;
+            closeGroupMessageMenus();
+
+            if (action === 'reply') {
+                setGroupReplyTarget(getGroupMessageTarget(messageEl));
+                if (groupChatInput && !groupChatInput.disabled) {
+                    groupChatInput.focus();
+                }
+                return;
+            }
+
+            if (action === 'pin') {
+                setGroupPinnedMessage(getGroupMessageTarget(messageEl));
+                return;
+            }
+
+            if (action === 'copy') {
+                copyGroupMessageText(messageEl).catch(function() {
+                    window.alert('Не удалось скопировать текст.');
+                });
+                return;
+            }
+
+            if (action === 'edit') {
+                if (!groupEditMessageForm || !groupEditContent) return;
+                const currentText = actionBtn.dataset.messageContent || messageEl.dataset.content || '';
+                const updatedText = window.prompt('Изменить сообщение:', currentText);
+                if (updatedText === null) return;
+
+                const content = updatedText.trim();
+                if (!content) {
+                    window.alert('Введите текст сообщения.');
+                    return;
+                }
+
+                groupEditMessageForm.action = actionBtn.dataset.editUrl;
+                groupEditContent.value = content;
+                groupEditMessageForm.submit();
+                return;
+            }
+
+            if (action === 'delete') {
+                if (!groupDeleteMessageForm) return;
+                if (!window.confirm('Удалить сообщение?')) return;
+                groupDeleteMessageForm.action = actionBtn.dataset.deleteUrl;
+                groupDeleteMessageForm.submit();
+            }
+        });
+
+        groupMessages.addEventListener('keydown', function(event) {
+            const replyBlock = event.target.closest('.group-chat-message-reply[data-reply-id]');
+            if (!replyBlock) return;
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            const replyId = Number(replyBlock.dataset.replyId || 0);
+            if (replyId) {
+                jumpToGroupMessage(replyId);
+            }
+        });
+
+        groupMessages.addEventListener('contextmenu', function(event) {
+            const messageEl = event.target.closest('.group-chat-message');
+            if (!messageEl) return;
+            const actions = messageEl.querySelector('.group-chat-message-actions');
+            if (!actions) return;
+            event.preventDefault();
+            closeGroupMessageMenus(actions);
+            actions.classList.add('is-open');
+            const toggle = actions.querySelector('.group-chat-message-menu-toggle');
+            if (toggle) {
+                toggle.setAttribute('aria-expanded', 'true');
+            }
+        });
+
+        document.addEventListener('click', function(event) {
+            if (!event.target.closest('.group-chat-message-actions')) {
+                closeGroupMessageMenus();
+            }
+        });
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                closeGroupMessageMenus();
+            }
+        });
+    }
+
+    if (groupAttachBtn && groupAttachmentInput) {
+        groupAttachBtn.addEventListener('click', function() {
+            if (groupAttachBtn.disabled || groupAttachmentInput.disabled) return;
+            groupAttachmentInput.click();
+        });
+        groupAttachmentInput.addEventListener('change', updateGroupAttachmentPreview);
+    }
+});
+</script>
 {% endblock %}

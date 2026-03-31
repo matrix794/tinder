@@ -8,11 +8,12 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import os
 import re
+import mimetypes
 from secrets import token_urlsafe
 from datetime import datetime, timedelta
 from functools import wraps
 from PIL import Image
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, inspect, text
 
 from profanity import contains_profanity
 
@@ -55,12 +56,19 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 
 # Настройки для загрузки файлов
 UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'uploads')
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+PROFILE_PHOTO_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+CHAT_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+CHAT_FILE_EXTENSIONS = {
+    'pdf', 'txt', 'csv', 'zip', 'rar', '7z',
+    'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'
+}
+CHAT_ATTACHMENT_EXTENSIONS = CHAT_IMAGE_EXTENSIONS | CHAT_FILE_EXTENSIONS
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
-app.config['ALLOWED_EXTENSIONS'] = ALLOWED_EXTENSIONS
+app.config['ALLOWED_EXTENSIONS'] = PROFILE_PHOTO_EXTENSIONS
+app.config['CHAT_ATTACHMENT_EXTENSIONS'] = CHAT_ATTACHMENT_EXTENSIONS
 
 # Создаем папку для загрузок
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -202,12 +210,38 @@ class Message(db.Model):
     sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     content = db.Column(db.Text, nullable=False)
+    reply_to_id = db.Column(db.Integer, db.ForeignKey('message.id'))
+    attachment_filename = db.Column(db.String(255))
+    attachment_original_name = db.Column(db.String(255))
+    attachment_mime_type = db.Column(db.String(120))
+    attachment_size = db.Column(db.Integer)
+    attachment_type = db.Column(db.String(20))
     is_read = db.Column(db.Boolean, default=False)
+    edited_at = db.Column(db.DateTime)
+    deleted_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     # Связи
     sender = db.relationship('User', foreign_keys=[sender_id], backref='sent_messages')
     receiver = db.relationship('User', foreign_keys=[receiver_id], backref='received_messages')
+    reply_to = db.relationship('Message', remote_side=[id], foreign_keys=[reply_to_id], uselist=False)
+
+
+class ChatPinnedMessage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user1_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user2_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    message_id = db.Column(db.Integer, db.ForeignKey('message.id'), nullable=False)
+    created_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    message = db.relationship('Message', foreign_keys=[message_id], backref='chat_pins')
+    created_by = db.relationship('User', foreign_keys=[created_by_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('user1_id', 'user2_id', 'message_id', name='unique_chat_pinned_message'),
+        db.Index('idx_chat_pinned_pair_created', 'user1_id', 'user2_id', 'created_at'),
+    )
 
 
 class StudyGroup(db.Model):
@@ -244,12 +278,27 @@ class StudyGroupMessage(db.Model):
     group_id = db.Column(db.Integer, db.ForeignKey('study_group.id'), nullable=False)
     sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     content = db.Column(db.Text, nullable=False)
+    reply_to_id = db.Column(db.Integer, db.ForeignKey('study_group_message.id'))
+    attachment_filename = db.Column(db.String(255))
+    attachment_original_name = db.Column(db.String(255))
+    attachment_mime_type = db.Column(db.String(120))
+    attachment_size = db.Column(db.Integer)
+    attachment_type = db.Column(db.String(20))
+    edited_at = db.Column(db.DateTime)
+    deleted_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     sender = db.relationship('User', backref='study_group_messages')
+    reply_to = db.relationship(
+        'StudyGroupMessage',
+        remote_side=[id],
+        foreign_keys=[reply_to_id],
+        uselist=False,
+    )
 
 
 PROFANITY_MSG = 'Недопустимая лексика. Уберите ненормативные выражения.'
+DELETED_MESSAGE_TEXT = 'Сообщение удалено'
 
 # Чаты: после 3-х попыток с матом — бан; длительности по очереди (часы)
 PROFANITY_CHAT_STRIKES_LIMIT = 3
@@ -415,8 +464,12 @@ class MessageForm(FlaskForm):
     # Мат в чате обрабатываем вручную (счётчик попыток и баны), без NoProfanity здесь
     content = TextAreaField(
         'Сообщение',
-        validators=[validators.DataRequired(), validators.Length(min=1, max=1000)],
+        validators=[validators.Optional(), validators.Length(max=1000)],
         render_kw={"placeholder": "Напишите сообщение...", "rows": 3},
+    )
+    attachment = FileField(
+        'Вложение',
+        validators=[FileAllowed(sorted(CHAT_ATTACHMENT_EXTENSIONS), 'Неподдерживаемый тип файла.')],
     )
     submit = SubmitField('Отправить')
 
@@ -653,11 +706,236 @@ def get_or_create_oauth_user(email, username_hint):
     return user, True
 
 # Функции для работы с файлами
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def get_file_extension(filename):
+    if not filename or '.' not in filename:
+        return ''
+    return filename.rsplit('.', 1)[1].lower()
+
+
+def allowed_profile_photo(filename):
+    return get_file_extension(filename) in PROFILE_PHOTO_EXTENSIONS
+
+
+def allowed_chat_attachment(filename):
+    return get_file_extension(filename) in CHAT_ATTACHMENT_EXTENSIONS
+
+
+def save_chat_attachment(file, sender_id):
+    if not file or not file.filename:
+        return None, None
+
+    original_name = (file.filename or '').strip().replace('\\', '/').split('/')[-1]
+    if not original_name:
+        return None, 'Некорректное имя файла.'
+
+    ext = get_file_extension(original_name)
+    if ext not in CHAT_ATTACHMENT_EXTENSIONS:
+        return None, 'Неподдерживаемый тип файла.'
+
+    # Защита от больших файлов (дополнительно к MAX_CONTENT_LENGTH).
+    try:
+        file.stream.seek(0, os.SEEK_END)
+        file_size = file.stream.tell()
+        file.stream.seek(0)
+    except Exception:
+        file_size = file.content_length or 0
+
+    if file_size > MAX_FILE_SIZE:
+        return None, 'Файл слишком большой (максимум 5 МБ).'
+
+    attachment_filename = f"chat_{sender_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')}.{ext}"
+    upload_folder = app.config['UPLOAD_FOLDER']
+    os.makedirs(upload_folder, exist_ok=True)
+    filepath = os.path.join(upload_folder, attachment_filename)
+    file.save(filepath)
+
+    return {
+        'attachment_filename': attachment_filename,
+        'attachment_original_name': original_name,
+        'attachment_mime_type': file.mimetype or mimetypes.guess_type(original_name)[0] or 'application/octet-stream',
+        'attachment_size': int(file_size or 0),
+        'attachment_type': 'image' if ext in CHAT_IMAGE_EXTENSIONS else 'file',
+    }, None
+
+
+def delete_uploaded_file(filename):
+    if not filename:
+        return
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    if os.path.exists(filepath):
+        os.remove(filepath)
+
+
+def get_attachment_kind(filename, attachment_type=None):
+    if attachment_type in ('image', 'file'):
+        return attachment_type
+    return 'image' if get_file_extension(filename) in CHAT_IMAGE_EXTENSIONS else 'file'
+
+
+def get_attachment_preview_label(obj):
+    if not getattr(obj, 'attachment_filename', None):
+        return None
+    kind = get_attachment_kind(obj.attachment_filename, getattr(obj, 'attachment_type', None))
+    return '[Фотография]' if kind == 'image' else '[Файл]'
+
+
+def _trim_text(text, max_len=80):
+    normalized = (text or '').replace('\n', ' ').strip()
+    if len(normalized) <= max_len:
+        return normalized
+    return normalized[: max_len - 1] + '…'
+
+
+def build_reply_payload(message_obj):
+    replied = getattr(message_obj, 'reply_to', None)
+    if not replied:
+        return None
+
+    replied_sender = getattr(replied, 'sender', None)
+    if replied_sender and replied_sender.profile:
+        replied_sender_name = replied_sender.profile.full_name
+    elif replied_sender:
+        replied_sender_name = replied_sender.username
+    else:
+        replied_sender_name = 'Пользователь'
+
+    if getattr(replied, 'deleted_at', None):
+        preview = DELETED_MESSAGE_TEXT
+    elif (getattr(replied, 'content', '') or '').strip():
+        preview = _trim_text(replied.content)
+    else:
+        preview = get_attachment_preview_label(replied) or ''
+
+    return {
+        'id': replied.id,
+        'sender_name': replied_sender_name,
+        'preview': preview,
+        'is_deleted': bool(getattr(replied, 'deleted_at', None)),
+    }
+
+
+def get_message_attachment_payload(message):
+    if not message.attachment_filename or message.deleted_at:
+        return None
+
+    return {
+        'url': url_for('uploaded_file', filename=message.attachment_filename),
+        'filename': message.attachment_filename,
+        'original_name': message.attachment_original_name or message.attachment_filename,
+        'mime_type': message.attachment_mime_type,
+        'size': message.attachment_size or 0,
+        'type': get_attachment_kind(message.attachment_filename, message.attachment_type),
+    }
+
+
+def serialize_chat_message(message):
+    is_deleted = bool(message.deleted_at)
+    return {
+        'id': message.id,
+        'sender_id': message.sender_id,
+        'content': DELETED_MESSAGE_TEXT if is_deleted else (message.content or ''),
+        'created_at': message.created_at.strftime('%H:%M'),
+        'is_deleted': is_deleted,
+        'is_edited': bool(message.edited_at) and not is_deleted,
+        'sender_name': message.sender.profile.full_name if message.sender.profile else message.sender.username,
+        'attachment': get_message_attachment_payload(message),
+        'reply_to': build_reply_payload(message),
+    }
+
+
+def get_chat_pair_ids(user_a_id, user_b_id):
+    return (user_a_id, user_b_id) if user_a_id < user_b_id else (user_b_id, user_a_id)
+
+
+def serialize_chat_pinned_message(message):
+    if message.deleted_at:
+        preview = DELETED_MESSAGE_TEXT
+    elif (message.content or '').strip():
+        preview = _trim_text(message.content, 90)
+    else:
+        preview = get_attachment_preview_label(message) or ''
+
+    sender_name = message.sender.profile.full_name if message.sender and message.sender.profile else (message.sender.username if message.sender else 'Пользователь')
+    return {
+        'id': message.id,
+        'sender_id': message.sender_id,
+        'sender_name': sender_name,
+        'preview': preview,
+        'is_deleted': bool(message.deleted_at),
+        'created_at': message.created_at.strftime('%H:%M'),
+    }
+
+
+def serialize_chat_pinned_messages(user_a_id, user_b_id):
+    user1_id, user2_id = get_chat_pair_ids(user_a_id, user_b_id)
+    pinned_rows = (
+        db.session.query(ChatPinnedMessage, Message)
+        .join(Message, Message.id == ChatPinnedMessage.message_id)
+        .filter(
+            ChatPinnedMessage.user1_id == user1_id,
+            ChatPinnedMessage.user2_id == user2_id,
+        )
+        .order_by(ChatPinnedMessage.created_at.desc())
+        .all()
+    )
+    return [serialize_chat_pinned_message(message) for _, message in pinned_rows]
+
+
+def build_chat_list_for_user(user_id):
+    user_matches = db.session.query(Match).filter(
+        (Match.user1_id == user_id) | (Match.user2_id == user_id)
+    ).all()
+
+    chat_items = []
+    for match in user_matches:
+        other_user_id = match.user2_id if match.user1_id == user_id else match.user1_id
+        other_user = User.query.get(other_user_id)
+        other_profile = StudentProfile.query.filter_by(user_id=other_user_id).first()
+        if not other_user or not other_profile:
+            continue
+
+        last_message = Message.query.filter(
+            ((Message.sender_id == user_id) & (Message.receiver_id == other_user_id))
+            | ((Message.sender_id == other_user_id) & (Message.receiver_id == user_id))
+        ).order_by(Message.created_at.desc()).first()
+
+        if last_message:
+            if last_message.deleted_at:
+                last_message_preview = '[Удалено]'
+            elif (last_message.content or '').strip():
+                last_message_preview = _trim_text(last_message.content, 80)
+            elif last_message.attachment_filename:
+                attachment_kind = get_attachment_kind(last_message.attachment_filename, last_message.attachment_type)
+                last_message_preview = '[Фотография]' if attachment_kind == 'image' else '[Файл]'
+            else:
+                last_message_preview = None
+        else:
+            last_message_preview = None
+
+        unread_count = Message.query.filter(
+            Message.sender_id == other_user_id,
+            Message.receiver_id == user_id,
+            Message.is_read == False
+        ).count()
+
+        chat_items.append({
+            'user': other_user,
+            'user_id': other_user_id,
+            'profile': other_profile,
+            'match_date': match.created_at,
+            'last_message': last_message_preview,
+            'last_message_time': last_message.created_at.strftime('%H:%M') if last_message else None,
+            'last_message_at': last_message.created_at if last_message else match.created_at,
+            'has_unread': unread_count > 0,
+            'unread_count': unread_count,
+        })
+
+    chat_items.sort(key=lambda item: item.get('last_message_at') or item['match_date'], reverse=True)
+    return chat_items
+
 
 def save_profile_photo(file, user_id):
-    if file and file.filename and allowed_file(file.filename):
+    if file and file.filename and allowed_profile_photo(file.filename):
         try:
             # Создаем уникальное имя файла
             filename = secure_filename(file.filename)
@@ -697,10 +975,7 @@ def save_profile_photo(file, user_id):
     return None
 
 def delete_profile_photo(filename):
-    if filename:
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        if os.path.exists(filepath):
-            os.remove(filepath)
+    delete_uploaded_file(filename)
 
 def get_next_profile_for_user(user_id, filters=None):
     """Получает следующий профиль для просмотра пользователем (с учётом фильтров поиска)."""
@@ -1155,42 +1430,10 @@ def matches():
     if not current_user.profile:
         flash('Сначала создайте профиль.', 'info')
         return redirect(url_for('create_profile'))
-    
-    # Получаем все мэтчи текущего пользователя
-    user_matches = db.session.query(Match).filter(
-        (Match.user1_id == current_user.id) | (Match.user2_id == current_user.id)
-    ).all()
-    
-    # Получаем профили мэтчей + краткую информацию по переписке
-    match_profiles = []
-    for match in user_matches:
-        other_user_id = match.user2_id if match.user1_id == current_user.id else match.user1_id
-        other_profile = StudentProfile.query.filter_by(user_id=other_user_id).first()
-        if other_profile:
-            # Последнее сообщение в чате с этим пользователем
-            last_message = Message.query.filter(
-                ((Message.sender_id == current_user.id) & (Message.receiver_id == other_user_id)) |
-                ((Message.sender_id == other_user_id) & (Message.receiver_id == current_user.id))
-            ).order_by(Message.created_at.desc()).first()
 
-            # Есть ли непрочитанные сообщения от собеседника
-            has_unread = Message.query.filter(
-                Message.sender_id == other_user_id,
-                Message.receiver_id == current_user.id,
-                Message.is_read == False
-            ).count() > 0
-
-            match_profiles.append({
-                'profile': other_profile,
-                'match_date': match.created_at,
-                'last_message': last_message.content if last_message else None,
-                'last_message_time': last_message.created_at.strftime('%H:%M') if last_message else None,
-                'has_unread': has_unread
-            })
-    
-    # Количество мэтчей с непрочитанными сообщениями
+    match_profiles = build_chat_list_for_user(current_user.id)
     new_matches_count = sum(1 for m in match_profiles if m['has_unread'])
-    
+
     return render_template('matches.html', matches=match_profiles, new_matches_count=new_matches_count)
 
 
@@ -1444,10 +1687,125 @@ def send_group_message(group_id):
         return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
 
     content = (request.form.get('content') or '').strip()
+    attachment_file = request.files.get('attachment')
+    has_attachment = bool(attachment_file and attachment_file.filename)
+    reply_to_id_raw = (request.form.get('reply_to_id') or '').strip()
+    reply_to_message = None
+
+    if reply_to_id_raw:
+        if not reply_to_id_raw.isdigit():
+            session['group_chat_error'] = {
+                'group_id': group.id,
+                'message': 'Некорректная ссылка на сообщение для ответа.',
+            }
+            return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+        reply_to_message = StudyGroupMessage.query.filter_by(
+            id=int(reply_to_id_raw),
+            group_id=group.id,
+        ).first()
+        if not reply_to_message:
+            session['group_chat_error'] = {
+                'group_id': group.id,
+                'message': 'Сообщение для ответа не найдено.',
+            }
+            return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+
+    if not content and not has_attachment:
+        session['group_chat_error'] = {
+            'group_id': group.id,
+            'message': 'Введите сообщение или добавьте вложение.',
+        }
+        return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+
+    if len(content) > 2000:
+        session['group_chat_error'] = {
+            'group_id': group.id,
+            'message': 'Сообщение слишком длинное (максимум 2000 символов).',
+        }
+        return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+
+    if content and contains_profanity(content):
+        viol = register_chat_profanity_violation(user)
+        if viol['banned']:
+            user = User.query.get(current_user.id)
+            session['group_chat_error'] = {
+                'group_id': group.id,
+                'message': format_new_chat_ban_message(viol['hours'])
+                + ' '
+                + format_profanity_chat_blocked_message(user),
+            }
+        else:
+            session['group_chat_error'] = {
+                'group_id': group.id,
+                'message': (
+                    f'{PROFANITY_MSG} (попытка {viol["strikes"]} из {PROFANITY_CHAT_STRIKES_LIMIT} до блокировки чата).'
+                ),
+            }
+        return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+
+    attachment_payload = None
+    if has_attachment:
+        attachment_payload, attachment_error = save_chat_attachment(attachment_file, current_user.id)
+        if attachment_error:
+            session['group_chat_error'] = {
+                'group_id': group.id,
+                'message': attachment_error,
+            }
+            return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+
+    db.session.add(
+        StudyGroupMessage(
+            group_id=group.id,
+            sender_id=current_user.id,
+            content=content,
+            reply_to_id=reply_to_message.id if reply_to_message else None,
+            attachment_filename=attachment_payload['attachment_filename'] if attachment_payload else None,
+            attachment_original_name=attachment_payload['attachment_original_name'] if attachment_payload else None,
+            attachment_mime_type=attachment_payload['attachment_mime_type'] if attachment_payload else None,
+            attachment_size=attachment_payload['attachment_size'] if attachment_payload else None,
+            attachment_type=attachment_payload['attachment_type'] if attachment_payload else None,
+        )
+    )
+    db.session.commit()
+    return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+
+
+@app.route('/groups/<int:group_id>/messages/<int:message_id>/edit', methods=['POST'])
+@login_required
+def edit_group_message(group_id, message_id):
+    group = StudyGroup.query.get_or_404(group_id)
+    if not group.is_active:
+        flash('Группа закрыта. Редактирование сообщений отключено.', 'error')
+        return redirect(url_for('group_detail', group_id=group.id))
+    membership = StudyGroupMembership.query.filter_by(
+        group_id=group.id, user_id=current_user.id
+    ).first()
+    if not membership:
+        flash('Вступите в группу, чтобы управлять сообщениями.', 'error')
+        return redirect(url_for('group_detail', group_id=group.id))
+
+    message = StudyGroupMessage.query.filter_by(id=message_id, group_id=group.id).first_or_404()
+    if message.sender_id != current_user.id:
+        flash('Можно редактировать только свои сообщения.', 'error')
+        return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+
+    if message.deleted_at:
+        flash('Удалённое сообщение нельзя редактировать.', 'error')
+        return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+
+    user = User.query.get(current_user.id)
+    if is_user_profanity_chat_blocked(user):
+        session['group_chat_error'] = {
+            'group_id': group.id,
+            'message': format_profanity_chat_blocked_message(user),
+        }
+        return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+
+    content = (request.form.get('content') or '').strip()
     if not content:
         session['group_chat_error'] = {
             'group_id': group.id,
-            'message': 'Введите сообщение.',
+            'message': 'Введите текст сообщения для редактирования.',
         }
         return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
 
@@ -1477,13 +1835,43 @@ def send_group_message(group_id):
             }
         return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
 
-    db.session.add(
-        StudyGroupMessage(
-            group_id=group.id,
-            sender_id=current_user.id,
-            content=content,
-        )
-    )
+    message.content = content
+    message.edited_at = datetime.utcnow()
+    db.session.commit()
+    return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+
+
+@app.route('/groups/<int:group_id>/messages/<int:message_id>/delete', methods=['POST'])
+@login_required
+def delete_group_message(group_id, message_id):
+    group = StudyGroup.query.get_or_404(group_id)
+    if not group.is_active:
+        flash('Группа закрыта. Удаление сообщений отключено.', 'error')
+        return redirect(url_for('group_detail', group_id=group.id))
+    membership = StudyGroupMembership.query.filter_by(
+        group_id=group.id, user_id=current_user.id
+    ).first()
+    if not membership:
+        flash('Вступите в группу, чтобы управлять сообщениями.', 'error')
+        return redirect(url_for('group_detail', group_id=group.id))
+
+    message = StudyGroupMessage.query.filter_by(id=message_id, group_id=group.id).first_or_404()
+    if message.sender_id != current_user.id:
+        flash('Можно удалять только свои сообщения.', 'error')
+        return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+
+    if message.deleted_at:
+        return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
+
+    delete_uploaded_file(message.attachment_filename)
+    message.content = ''
+    message.attachment_filename = None
+    message.attachment_original_name = None
+    message.attachment_mime_type = None
+    message.attachment_size = None
+    message.attachment_type = None
+    message.deleted_at = datetime.utcnow()
+    message.edited_at = None
     db.session.commit()
     return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
 
@@ -1557,12 +1945,17 @@ def chat(user_id):
         me = User.query.get(current_user.id)
         chat_blocked = is_user_profanity_chat_blocked(me)
         chat_blocked_until = me.profanity_blocked_until if chat_blocked else None
+        pinned_messages = serialize_chat_pinned_messages(current_user.id, user_id)
+        chat_list = build_chat_list_for_user(current_user.id)
 
         print("Рендеринг шаблона чата...")
         return render_template(
             'chat.html',
             other_user=other_user,
             messages=messages,
+            pinned_messages=pinned_messages,
+            chat_list=chat_list,
+            selected_chat_user_id=user_id,
             form=form,
             chat_blocked=chat_blocked,
             chat_blocked_until=chat_blocked_until,
@@ -1604,6 +1997,112 @@ def send_message(receiver_id):
         return {'success': False, 'error': 'Ошибка валидации формы', 'errors': form.errors}, 400
 
     content = (form.content.data or '').strip()
+    attachment_file = form.attachment.data
+    has_attachment = bool(getattr(attachment_file, 'filename', None))
+    reply_to_id_raw = (request.form.get('reply_to_id') or '').strip()
+    reply_to_message = None
+
+    if reply_to_id_raw:
+        if not reply_to_id_raw.isdigit():
+            return {
+                'success': False,
+                'errors': {'content': ['Некорректная ссылка на сообщение для ответа.']},
+            }, 400
+        reply_to_id = int(reply_to_id_raw)
+        reply_to_message = Message.query.filter(
+            Message.id == reply_to_id,
+            (
+                ((Message.sender_id == current_user.id) & (Message.receiver_id == receiver_id))
+                | ((Message.sender_id == receiver_id) & (Message.receiver_id == current_user.id))
+            ),
+        ).first()
+        if not reply_to_message:
+            return {
+                'success': False,
+                'errors': {'content': ['Сообщение для ответа не найдено.']},
+            }, 400
+
+    if not content and not has_attachment:
+        return {
+            'success': False,
+            'errors': {
+                'content': ['Введите сообщение или добавьте вложение.'],
+            },
+        }, 400
+
+    if content and contains_profanity(content):
+        viol = register_chat_profanity_violation(user)
+        if viol['banned']:
+            user = User.query.get(current_user.id)
+            return {
+                'success': False,
+                'blocked': True,
+                'error': format_new_chat_ban_message(viol['hours'])
+                + ' '
+                + format_profanity_chat_blocked_message(user),
+            }, 403
+        return {
+            'success': False,
+            'errors': {
+                'content': [
+                    f'{PROFANITY_MSG} (попытка {viol["strikes"]} из {PROFANITY_CHAT_STRIKES_LIMIT} до блокировки чата).'
+                ]
+            },
+        }, 400
+
+    attachment_payload = None
+    if has_attachment:
+        attachment_payload, attachment_error = save_chat_attachment(attachment_file, current_user.id)
+        if attachment_error:
+            return {
+                'success': False,
+                'errors': {'attachment': [attachment_error]},
+            }, 400
+
+    message = Message(
+        sender_id=current_user.id,
+        receiver_id=receiver_id,
+        content=content,
+        reply_to_id=reply_to_message.id if reply_to_message else None,
+        attachment_filename=attachment_payload['attachment_filename'] if attachment_payload else None,
+        attachment_original_name=attachment_payload['attachment_original_name'] if attachment_payload else None,
+        attachment_mime_type=attachment_payload['attachment_mime_type'] if attachment_payload else None,
+        attachment_size=attachment_payload['attachment_size'] if attachment_payload else None,
+        attachment_type=attachment_payload['attachment_type'] if attachment_payload else None,
+    )
+
+    db.session.add(message)
+    db.session.commit()
+
+    return {
+        'success': True,
+        'message': serialize_chat_message(message),
+    }
+
+
+@app.route('/edit-message/<int:message_id>', methods=['POST'])
+@login_required
+def edit_message(message_id):
+    message = Message.query.get_or_404(message_id)
+    if message.sender_id != current_user.id:
+        return {'success': False, 'error': 'Можно редактировать только свои сообщения.'}, 403
+    if message.deleted_at:
+        return {'success': False, 'error': 'Удалённое сообщение нельзя редактировать.'}, 400
+
+    user = User.query.get(current_user.id)
+    if is_user_profanity_chat_blocked(user):
+        return {
+            'success': False,
+            'blocked': True,
+            'error': format_profanity_chat_blocked_message(user),
+        }, 403
+
+    content = (request.form.get('content') or '').strip()
+    if not content:
+        return {'success': False, 'errors': {'content': ['Введите текст сообщения.']}}, 400
+    if len(content) > 1000:
+        return {'success': False, 'errors': {'content': ['Сообщение слишком длинное (максимум 1000 символов).']}}, 400
+
     if contains_profanity(content):
         viol = register_chat_profanity_violation(user)
         if viol['banned']:
@@ -1624,51 +2123,114 @@ def send_message(receiver_id):
             },
         }, 400
 
-    message = Message(
-        sender_id=current_user.id,
-        receiver_id=receiver_id,
-        content=content,
-    )
+    message.content = content
+    message.edited_at = datetime.utcnow()
+    db.session.commit()
+    return {'success': True, 'message': serialize_chat_message(message)}
 
-    db.session.add(message)
+
+@app.route('/delete-message/<int:message_id>', methods=['POST'])
+@login_required
+def delete_message(message_id):
+    message = Message.query.get_or_404(message_id)
+    if message.sender_id != current_user.id:
+        return {'success': False, 'error': 'Можно удалять только свои сообщения.'}, 403
+
+    if message.deleted_at:
+        return {'success': True, 'message': serialize_chat_message(message)}
+
+    delete_uploaded_file(message.attachment_filename)
+    message.content = ''
+    message.attachment_filename = None
+    message.attachment_original_name = None
+    message.attachment_mime_type = None
+    message.attachment_size = None
+    message.attachment_type = None
+    message.deleted_at = datetime.utcnow()
+    message.edited_at = None
+    db.session.commit()
+    return {'success': True, 'message': serialize_chat_message(message)}
+
+
+@app.route('/pin-message/<int:message_id>', methods=['POST'])
+@login_required
+def pin_message(message_id):
+    message = Message.query.get_or_404(message_id)
+    if current_user.id not in (message.sender_id, message.receiver_id):
+        return {'success': False, 'error': 'Недостаточно прав для закрепления этого сообщения.'}, 403
+
+    user1_id, user2_id = get_chat_pair_ids(message.sender_id, message.receiver_id)
+    existing = ChatPinnedMessage.query.filter_by(
+        user1_id=user1_id,
+        user2_id=user2_id,
+        message_id=message.id,
+    ).first()
+    if not existing:
+        db.session.add(
+            ChatPinnedMessage(
+                user1_id=user1_id,
+                user2_id=user2_id,
+                message_id=message.id,
+                created_by_id=current_user.id,
+            )
+        )
+        db.session.commit()
+
+    return {
+        'success': True,
+        'pinned_messages': serialize_chat_pinned_messages(message.sender_id, message.receiver_id),
+    }
+
+
+@app.route('/unpin-message/<int:message_id>', methods=['POST'])
+@login_required
+def unpin_message(message_id):
+    message = Message.query.get_or_404(message_id)
+    if current_user.id not in (message.sender_id, message.receiver_id):
+        return {'success': False, 'error': 'Недостаточно прав для открепления этого сообщения.'}, 403
+
+    user1_id, user2_id = get_chat_pair_ids(message.sender_id, message.receiver_id)
+    ChatPinnedMessage.query.filter_by(
+        user1_id=user1_id,
+        user2_id=user2_id,
+        message_id=message.id,
+    ).delete(synchronize_session=False)
     db.session.commit()
 
     return {
         'success': True,
-        'message_id': message.id,
-        'created_at': message.created_at.strftime('%H:%M'),
+        'pinned_messages': serialize_chat_pinned_messages(message.sender_id, message.receiver_id),
     }
+
 
 @app.route('/get-messages/<int:user_id>')
 @login_required
 def get_messages(user_id):
-    """Получение новых сообщений"""
+    """Получение сообщений чата (для синхронизации новых/изменённых/удалённых)."""
     if not current_user.profile:
         return {'error': 'Профиль не создан'}, 400
     
-    # Получаем непрочитанные сообщения
+    # Отдаём всю переписку, чтобы синхронизировать редактирование/удаление.
     messages = Message.query.filter(
-        Message.sender_id == user_id,
-        Message.receiver_id == current_user.id,
-        Message.is_read == False
+        ((Message.sender_id == user_id) & (Message.receiver_id == current_user.id))
+        | ((Message.sender_id == current_user.id) & (Message.receiver_id == user_id))
     ).order_by(Message.created_at.asc()).all()
     
-    # Отмечаем как прочитанные
+    # Отмечаем входящие как прочитанные.
     for message in messages:
-        message.is_read = True
+        if message.receiver_id == current_user.id and not message.is_read:
+            message.is_read = True
     db.session.commit()
     
     # Форматируем сообщения для JSON
     messages_data = []
     for message in messages:
-        messages_data.append({
-            'id': message.id,
-            'content': message.content,
-            'created_at': message.created_at.strftime('%H:%M'),
-            'sender_name': message.sender.profile.full_name if message.sender.profile else message.sender.username
-        })
+        messages_data.append(serialize_chat_message(message))
     
-    return {'messages': messages_data}
+    return {
+        'messages': messages_data,
+        'pinned_messages': serialize_chat_pinned_messages(current_user.id, user_id),
+    }
 
 
 @app.route('/admin')
@@ -1877,12 +2439,67 @@ def test_profile_form():
     </form>
     '''
 
+
+def run_schema_migrations():
+    """Простейшие миграции схемы без Alembic."""
+    inspector = inspect(db.engine)
+    statements = []
+    table_names = set(inspector.get_table_names())
+
+    if 'message' in table_names:
+        message_columns = {col['name'] for col in inspector.get_columns('message')}
+        if 'reply_to_id' not in message_columns:
+            statements.append('ALTER TABLE message ADD COLUMN reply_to_id INTEGER')
+        if 'attachment_filename' not in message_columns:
+            statements.append('ALTER TABLE message ADD COLUMN attachment_filename VARCHAR(255)')
+        if 'attachment_original_name' not in message_columns:
+            statements.append('ALTER TABLE message ADD COLUMN attachment_original_name VARCHAR(255)')
+        if 'attachment_mime_type' not in message_columns:
+            statements.append('ALTER TABLE message ADD COLUMN attachment_mime_type VARCHAR(120)')
+        if 'attachment_size' not in message_columns:
+            statements.append('ALTER TABLE message ADD COLUMN attachment_size INTEGER')
+        if 'attachment_type' not in message_columns:
+            statements.append('ALTER TABLE message ADD COLUMN attachment_type VARCHAR(20)')
+        if 'edited_at' not in message_columns:
+            statements.append('ALTER TABLE message ADD COLUMN edited_at TIMESTAMP')
+        if 'deleted_at' not in message_columns:
+            statements.append('ALTER TABLE message ADD COLUMN deleted_at TIMESTAMP')
+
+    if 'study_group_message' in table_names:
+        group_message_columns = {col['name'] for col in inspector.get_columns('study_group_message')}
+        if 'reply_to_id' not in group_message_columns:
+            statements.append('ALTER TABLE study_group_message ADD COLUMN reply_to_id INTEGER')
+        if 'attachment_filename' not in group_message_columns:
+            statements.append('ALTER TABLE study_group_message ADD COLUMN attachment_filename VARCHAR(255)')
+        if 'attachment_original_name' not in group_message_columns:
+            statements.append('ALTER TABLE study_group_message ADD COLUMN attachment_original_name VARCHAR(255)')
+        if 'attachment_mime_type' not in group_message_columns:
+            statements.append('ALTER TABLE study_group_message ADD COLUMN attachment_mime_type VARCHAR(120)')
+        if 'attachment_size' not in group_message_columns:
+            statements.append('ALTER TABLE study_group_message ADD COLUMN attachment_size INTEGER')
+        if 'attachment_type' not in group_message_columns:
+            statements.append('ALTER TABLE study_group_message ADD COLUMN attachment_type VARCHAR(20)')
+        if 'edited_at' not in group_message_columns:
+            statements.append('ALTER TABLE study_group_message ADD COLUMN edited_at TIMESTAMP')
+        if 'deleted_at' not in group_message_columns:
+            statements.append('ALTER TABLE study_group_message ADD COLUMN deleted_at TIMESTAMP')
+
+    if not statements:
+        return
+
+    for statement in statements:
+        db.session.execute(text(statement))
+    db.session.commit()
+
+
 # Создание таблиц при первом запуске
 def create_tables():
     with app.app_context():
         db.create_all()
+        run_schema_migrations()
 
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
+        run_schema_migrations()
     app.run(host="127.0.0.1", port=5000, debug=True)
