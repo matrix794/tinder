@@ -1,51 +1,111 @@
 {% extends "base.html" %}
 
 {% block title %}Админ · Пользователи{% endblock %}
+{% block body_class %}admin-users-page{% endblock %}
 
 {% block content %}
-<section class="card admin-page">
+<section class="card admin-page admin-users-card">
     <div class="admin-page-header">
         <div>
             <h2>Управление пользователями</h2>
-            <p class="admin-subtitle">Список всех аккаунтов платформы</p>
+            <p class="admin-subtitle">Роли, блокировки, мут чата и быстрые действия</p>
         </div>
-        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline">← Панель</a>
+        <div class="admin-head-links">
+            <a href="{{ url_for('admin_reports') }}" class="btn btn-secondary">Жалобы</a>
+            <a href="{{ url_for('admin_logs') }}" class="btn btn-secondary">Логи</a>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline">← Панель</a>
+        </div>
     </div>
 
     {% if users %}
         <div class="admin-table-wrapper">
-            <table class="admin-table">
+            <table class="admin-table admin-users-table">
                 <thead>
                     <tr>
                         <th>ID</th>
                         <th>Логин</th>
                         <th>Email</th>
+                        <th>Роль</th>
+                        <th>Статус</th>
+                        <th>Жалобы</th>
                         <th>Создан</th>
-                        <th>Профиль</th>
-                        <th></th>
+                        <th>Действия</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for user in users %}
+                        {% set user_role = effective_roles.get(user.id, user.role or 'user') %}
+                        {% set blocked_now = user.is_blocked and (not user.blocked_until or user.blocked_until > now_utc) %}
+                        {% set muted_now = user.chat_muted_until and user.chat_muted_until > now_utc %}
                         <tr>
                             <td>#{{ user.id }}</td>
-                            <td>{{ user.username }}</td>
-                            <td>{{ user.email }}</td>
-                            <td>{{ user.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
                             <td>
-                                {% if user.profile %}
-                                    <span class="badge badge-success">есть</span>
-                                {% else %}
-                                    <span class="badge">нет</span>
+                                <strong>{{ user.username }}</strong>
+                                {% if current_user.id == user.id %}
+                                <span class="badge">вы</span>
                                 {% endif %}
                             </td>
-                            <td class="admin-table-actions">
-                                {% if current_user.id != user.id %}
-                                    <form action="{{ url_for('admin_delete_user', user_id=user.id) }}" method="post" onsubmit="return confirm('Удалить пользователя {{ user.username }}? Это действие необратимо.');">
-                                        <button type="submit" class="btn btn-danger">Удалить</button>
-                                    </form>
+                            <td>{{ user.email }}</td>
+                            <td>
+                                <span class="badge {% if user_role == 'admin' %}badge-danger{% elif user_role == 'moderator' %}badge-warning{% else %}badge-info{% endif %}">
+                                    {{ user_role }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if blocked_now %}
+                                    <span class="badge badge-danger">
+                                        блок{% if user.blocked_until %} до {{ user.blocked_until.strftime('%d.%m %H:%M') }}{% endif %}
+                                    </span>
                                 {% else %}
-                                    <span class="badge">Это вы</span>
+                                    <span class="badge badge-success">активен</span>
+                                {% endif %}
+                                {% if muted_now %}
+                                    <span class="badge badge-warning">мут до {{ user.chat_muted_until.strftime('%d.%m %H:%M') }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge">{{ open_report_counts.get(user.id, 0) }} открыто</span>
+                                <span class="badge">{{ total_report_counts.get(user.id, 0) }} всего</span>
+                            </td>
+                            <td>{{ user.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                            <td class="admin-table-actions admin-table-actions-col">
+                                <form action="{{ url_for('admin_manage_user', user_id=user.id) }}" method="post" class="admin-inline-form admin-inline-row">
+                                    <input type="hidden" name="action" value="set_role">
+                                    <select name="role" class="form-input admin-select" {% if current_user.id == user.id %}disabled{% endif %}>
+                                        {% for role in role_choices %}
+                                        <option value="{{ role }}" {% if user_role == role %}selected{% endif %}>{{ role }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="submit" class="btn btn-secondary" {% if current_user.id == user.id %}disabled{% endif %}>Роль</button>
+                                </form>
+
+                                <form action="{{ url_for('admin_manage_user', user_id=user.id) }}" method="post" class="admin-inline-form admin-inline-row">
+                                    <input type="hidden" name="action" value="mute_chat">
+                                    <input type="number" name="minutes" class="form-input admin-compact-input" min="1" max="43200" value="60" placeholder="мин">
+                                    <button type="submit" class="btn btn-secondary">Мут</button>
+                                </form>
+
+                                <form action="{{ url_for('admin_manage_user', user_id=user.id) }}" method="post" class="admin-inline-form admin-inline-row">
+                                    <input type="hidden" name="action" value="block_user">
+                                    <input type="number" name="hours" class="form-input admin-compact-input" min="1" max="8760" placeholder="ч (пусто=навсегда)">
+                                    <button type="submit" class="btn btn-danger" {% if current_user.id == user.id %}disabled{% endif %}>Блок</button>
+                                </form>
+
+                                <div class="admin-inline-row">
+                                    <form action="{{ url_for('admin_manage_user', user_id=user.id) }}" method="post" class="admin-inline-form">
+                                        <input type="hidden" name="action" value="clear_mute">
+                                        <button type="submit" class="btn btn-outline">Снять мут</button>
+                                    </form>
+                                    <form action="{{ url_for('admin_manage_user', user_id=user.id) }}" method="post" class="admin-inline-form">
+                                        <input type="hidden" name="action" value="unblock_user">
+                                        <button type="submit" class="btn btn-outline">Разблок</button>
+                                    </form>
+                                </div>
+
+                                {% if current_user.id != user.id %}
+                                <form action="{{ url_for('admin_delete_user', user_id=user.id) }}" method="post" class="admin-inline-form" onsubmit="return confirm('Удалить пользователя {{ user.username }}? Это действие необратимо.');">
+                                    <button type="submit" class="btn btn-danger">Удалить аккаунт</button>
+                                </form>
                                 {% endif %}
                             </td>
                         </tr>
@@ -58,4 +118,3 @@
     {% endif %}
 </section>
 {% endblock %}
-

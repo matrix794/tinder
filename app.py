@@ -75,6 +75,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Администраторы (список логинов через запятую в ENV ADMIN_USERS)
 ADMIN_USERNAMES = {name.strip().lower() for name in os.environ.get('ADMIN_USERS', 'admin').split(',') if name.strip()}
+USER_ROLE_CHOICES = ('user', 'moderator', 'admin')
 
 db = SQLAlchemy(app)
 login_manager = LoginManager()
@@ -127,6 +128,10 @@ class User(UserMixin, db.Model):
     profanity_strike_count = db.Column(db.Integer, default=0, nullable=False)
     profanity_ban_tier = db.Column(db.Integer, default=0, nullable=False)
     profanity_blocked_until = db.Column(db.DateTime, nullable=True)
+    role = db.Column(db.String(20), nullable=False, default='user')
+    is_blocked = db.Column(db.Boolean, nullable=False, default=False)
+    blocked_until = db.Column(db.DateTime, nullable=True)
+    chat_muted_until = db.Column(db.DateTime, nullable=True)
     
     # Связь с профилем студента
     profile = db.relationship('StudentProfile', backref='user', uselist=False, cascade='all, delete-orphan')
@@ -217,6 +222,7 @@ class Message(db.Model):
     attachment_size = db.Column(db.Integer)
     attachment_type = db.Column(db.String(20))
     is_read = db.Column(db.Boolean, default=False)
+    delivered_at = db.Column(db.DateTime)
     edited_at = db.Column(db.DateTime)
     deleted_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -242,6 +248,38 @@ class ChatPinnedMessage(db.Model):
         db.UniqueConstraint('user1_id', 'user2_id', 'message_id', name='unique_chat_pinned_message'),
         db.Index('idx_chat_pinned_pair_created', 'user1_id', 'user2_id', 'created_at'),
     )
+
+
+class UserReport(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    reporter_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    reported_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    message_id = db.Column(db.Integer, db.ForeignKey('message.id'))
+    group_message_id = db.Column(db.Integer, db.ForeignKey('study_group_message.id'))
+    reason = db.Column(db.Text)
+    status = db.Column(db.String(20), nullable=False, default='open')
+    action_taken = db.Column(db.String(30))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    resolved_at = db.Column(db.DateTime)
+    resolved_by_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    resolution_note = db.Column(db.Text)
+
+    reporter = db.relationship('User', foreign_keys=[reporter_id], backref='reports_created')
+    reported_user = db.relationship('User', foreign_keys=[reported_user_id], backref='reports_received')
+    message = db.relationship('Message', foreign_keys=[message_id], backref='reports')
+    group_message = db.relationship('StudyGroupMessage', foreign_keys=[group_message_id], backref='reports')
+    resolved_by = db.relationship('User', foreign_keys=[resolved_by_id], backref='resolved_reports')
+
+
+class AdminActionLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    admin_id = db.Column(db.Integer, nullable=False)
+    action = db.Column(db.String(40), nullable=False)
+    target_user_id = db.Column(db.Integer)
+    report_id = db.Column(db.Integer)
+    message_id = db.Column(db.Integer)
+    details = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
 class StudyGroup(db.Model):
@@ -528,8 +566,105 @@ def touch_last_seen():
         db.session.rollback()
 
 
+def normalize_user_role(role):
+    value = (role or '').strip().lower()
+    if value in USER_ROLE_CHOICES:
+        return value
+    return 'user'
+
+
+def get_user_role(user):
+    if not user:
+        return 'user'
+    if user.username and user.username.lower() in ADMIN_USERNAMES:
+        return 'admin'
+    return normalize_user_role(getattr(user, 'role', None))
+
+
 def is_admin(user):
-    return bool(user and user.username and user.username.lower() in ADMIN_USERNAMES)
+    return get_user_role(user) == 'admin'
+
+
+def is_moderator(user):
+    return get_user_role(user) in ('moderator', 'admin')
+
+
+def clear_expired_user_restrictions(user):
+    if not user:
+        return
+    now_utc = datetime.utcnow()
+    changed = False
+    if getattr(user, 'is_blocked', False) and getattr(user, 'blocked_until', None):
+        if user.blocked_until <= now_utc:
+            user.is_blocked = False
+            user.blocked_until = None
+            changed = True
+    if getattr(user, 'chat_muted_until', None) and user.chat_muted_until <= now_utc:
+        user.chat_muted_until = None
+        changed = True
+    if changed:
+        db.session.commit()
+
+
+def is_user_blocked(user):
+    if not user:
+        return False
+    if not getattr(user, 'is_blocked', False):
+        return False
+    until = getattr(user, 'blocked_until', None)
+    if not until:
+        return True
+    return datetime.utcnow() < until
+
+
+def is_user_chat_muted(user):
+    if not user:
+        return False
+    muted_until = getattr(user, 'chat_muted_until', None)
+    if not muted_until:
+        return False
+    return datetime.utcnow() < muted_until
+
+
+def format_user_chat_muted_message(user):
+    muted_until = getattr(user, 'chat_muted_until', None)
+    if not muted_until:
+        return 'Вам временно запрещено писать в чат.'
+    return f'Чат временно недоступен. Ограничение до {muted_until.strftime("%d.%m.%Y %H:%M")} UTC.'
+
+
+def format_user_blocked_message(user):
+    blocked_until = getattr(user, 'blocked_until', None)
+    if blocked_until:
+        return f'Ваш аккаунт заблокирован администратором до {blocked_until.strftime("%d.%m.%Y %H:%M")} UTC.'
+    return 'Ваш аккаунт заблокирован администратором.'
+
+
+def get_active_chat_restriction_message(user):
+    if not user:
+        return None
+    if is_user_blocked(user):
+        return format_user_blocked_message(user)
+    if is_user_chat_muted(user):
+        return format_user_chat_muted_message(user)
+    if is_user_profanity_chat_blocked(user):
+        return format_profanity_chat_blocked_message(user)
+    return None
+
+
+def add_admin_action_log(action, target_user_id=None, report_id=None, message_id=None, details=None):
+    if not current_user.is_authenticated:
+        return
+    db.session.add(
+        AdminActionLog(
+            admin_id=current_user.id,
+            action=action,
+            target_user_id=target_user_id,
+            report_id=report_id,
+            message_id=message_id,
+            details=details,
+        )
+    )
 
 
 def admin_required(view_func):
@@ -543,10 +678,28 @@ def admin_required(view_func):
     return wrapped_view
 
 
+@app.before_request
+def enforce_account_restrictions():
+    if not current_user.is_authenticated:
+        return
+    endpoint = request.endpoint or ''
+    if endpoint in {'logout', 'static'}:
+        return
+    user = User.query.get(current_user.id)
+    if not user:
+        return
+    clear_expired_user_restrictions(user)
+    if is_user_blocked(user):
+        logout_user()
+        flash(format_user_blocked_message(user), 'error')
+        return redirect(url_for('login'))
+
+
 @app.context_processor
 def inject_role_flags():
     return {
-        'current_user_is_admin': current_user.is_authenticated and is_admin(current_user)
+        'current_user_is_admin': current_user.is_authenticated and is_admin(current_user),
+        'current_user_role': get_user_role(current_user) if current_user.is_authenticated else 'user',
     }
 
 
@@ -830,6 +983,8 @@ def get_message_attachment_payload(message):
 
 def serialize_chat_message(message):
     is_deleted = bool(message.deleted_at)
+    is_read = bool(message.is_read)
+    is_delivered = bool(message.delivered_at) or is_read
     return {
         'id': message.id,
         'sender_id': message.sender_id,
@@ -837,6 +992,8 @@ def serialize_chat_message(message):
         'created_at': message.created_at.strftime('%H:%M'),
         'is_deleted': is_deleted,
         'is_edited': bool(message.edited_at) and not is_deleted,
+        'is_read': is_read,
+        'is_delivered': is_delivered,
         'sender_name': message.sender.profile.full_name if message.sender.profile else message.sender.username,
         'attachment': get_message_attachment_payload(message),
         'reply_to': build_reply_payload(message),
@@ -1036,6 +1193,10 @@ def login():
             user = User.query.filter_by(username=identifier).first()
         
         if user and user.check_password(form.password.data):
+            clear_expired_user_restrictions(user)
+            if is_user_blocked(user):
+                flash(format_user_blocked_message(user), 'error')
+                return render_template('login.html', form=form)
             login_user(user)
             flash('Вы успешно вошли в систему!', 'success')
             next_page = request.args.get('next')
@@ -1091,6 +1252,10 @@ def auth_google_callback():
 
     username_hint = (user_info or {}).get('name') or (user_info or {}).get('given_name') or email.split('@')[0]
     user, created = get_or_create_oauth_user(email, username_hint)
+    clear_expired_user_restrictions(user)
+    if is_user_blocked(user):
+        flash(format_user_blocked_message(user), 'error')
+        return redirect(url_for('login'))
     login_user(user)
     flash('Аккаунт создан через Google.' if created else 'Вы успешно вошли через Google.', 'success')
     return redirect(url_for('index'))
@@ -1155,6 +1320,10 @@ def auth_github_callback():
 
     username_hint = (profile or {}).get('login') or (profile or {}).get('name') or email.split('@')[0]
     user, created = get_or_create_oauth_user(email, username_hint)
+    clear_expired_user_restrictions(user)
+    if is_user_blocked(user):
+        flash(format_user_blocked_message(user), 'error')
+        return redirect(url_for('login'))
     login_user(user)
     flash('Аккаунт создан через GitHub.' if created else 'Вы успешно вошли через GitHub.', 'success')
     return redirect(url_for('index'))
@@ -1595,8 +1764,15 @@ def group_detail(group_id):
         group_chat_field_error = chat_err.get('message')
 
     me = User.query.get(current_user.id)
-    chat_blocked = is_user_profanity_chat_blocked(me)
-    chat_blocked_until = me.profanity_blocked_until if chat_blocked else None
+    clear_expired_user_restrictions(me)
+    chat_blocked_message = get_active_chat_restriction_message(me)
+    chat_blocked = bool(chat_blocked_message)
+    chat_blocked_until = None
+    if chat_blocked:
+        if is_user_chat_muted(me):
+            chat_blocked_until = me.chat_muted_until
+        elif is_user_profanity_chat_blocked(me):
+            chat_blocked_until = me.profanity_blocked_until
 
     return render_template(
         'group_detail.html',
@@ -1610,6 +1786,7 @@ def group_detail(group_id):
         group_chat_field_error=group_chat_field_error,
         chat_blocked=chat_blocked,
         chat_blocked_until=chat_blocked_until,
+        chat_blocked_message=chat_blocked_message,
     )
 
 
@@ -1679,10 +1856,12 @@ def send_group_message(group_id):
         return redirect(url_for('group_detail', group_id=group.id))
 
     user = User.query.get(current_user.id)
-    if is_user_profanity_chat_blocked(user):
+    clear_expired_user_restrictions(user)
+    restriction_message = get_active_chat_restriction_message(user)
+    if restriction_message:
         session['group_chat_error'] = {
             'group_id': group.id,
-            'message': format_profanity_chat_blocked_message(user),
+            'message': restriction_message,
         }
         return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
 
@@ -1794,10 +1973,12 @@ def edit_group_message(group_id, message_id):
         return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
 
     user = User.query.get(current_user.id)
-    if is_user_profanity_chat_blocked(user):
+    clear_expired_user_restrictions(user)
+    restriction_message = get_active_chat_restriction_message(user)
+    if restriction_message:
         session['group_chat_error'] = {
             'group_id': group.id,
-            'message': format_profanity_chat_blocked_message(user),
+            'message': restriction_message,
         }
         return redirect(f"{url_for('group_detail', group_id=group.id)}#group-chat")
 
@@ -1935,16 +2116,30 @@ def chat(user_id):
         
         print(f"Найдено сообщений: {len(messages)}")
         
-        # Отмечаем сообщения как прочитанные
+        # При открытии чата отмечаем входящие как доставленные.
+        # В прочитанные переводим при синхронизации /get-messages (когда чат уже активен).
+        now_utc = datetime.utcnow()
+        has_updates = False
         for message in messages:
-            if message.receiver_id == current_user.id and not message.is_read:
-                message.is_read = True
-        db.session.commit()
+            if message.receiver_id != current_user.id:
+                continue
+            if not message.delivered_at:
+                message.delivered_at = now_utc
+                has_updates = True
+        if has_updates:
+            db.session.commit()
         
         form = MessageForm()
         me = User.query.get(current_user.id)
-        chat_blocked = is_user_profanity_chat_blocked(me)
-        chat_blocked_until = me.profanity_blocked_until if chat_blocked else None
+        clear_expired_user_restrictions(me)
+        chat_blocked_message = get_active_chat_restriction_message(me)
+        chat_blocked = bool(chat_blocked_message)
+        chat_blocked_until = None
+        if chat_blocked:
+            if is_user_chat_muted(me):
+                chat_blocked_until = me.chat_muted_until
+            elif is_user_profanity_chat_blocked(me):
+                chat_blocked_until = me.profanity_blocked_until
         pinned_messages = serialize_chat_pinned_messages(current_user.id, user_id)
         chat_list = build_chat_list_for_user(current_user.id)
 
@@ -1959,6 +2154,7 @@ def chat(user_id):
             form=form,
             chat_blocked=chat_blocked,
             chat_blocked_until=chat_blocked_until,
+            chat_blocked_message=chat_blocked_message,
         )
     
     except Exception as e:
@@ -1976,11 +2172,13 @@ def send_message(receiver_id):
         return {'error': 'Профиль не создан'}, 400
 
     user = User.query.get(current_user.id)
-    if is_user_profanity_chat_blocked(user):
+    clear_expired_user_restrictions(user)
+    restriction_message = get_active_chat_restriction_message(user)
+    if restriction_message:
         return {
             'success': False,
             'blocked': True,
-            'error': format_profanity_chat_blocked_message(user),
+            'error': restriction_message,
         }, 403
     
     # Проверяем, что пользователи являются мэтчами
@@ -2090,11 +2288,13 @@ def edit_message(message_id):
         return {'success': False, 'error': 'Удалённое сообщение нельзя редактировать.'}, 400
 
     user = User.query.get(current_user.id)
-    if is_user_profanity_chat_blocked(user):
+    clear_expired_user_restrictions(user)
+    restriction_message = get_active_chat_restriction_message(user)
+    if restriction_message:
         return {
             'success': False,
             'blocked': True,
-            'error': format_profanity_chat_blocked_message(user),
+            'error': restriction_message,
         }, 403
 
     content = (request.form.get('content') or '').strip()
@@ -2216,11 +2416,20 @@ def get_messages(user_id):
         | ((Message.sender_id == current_user.id) & (Message.receiver_id == user_id))
     ).order_by(Message.created_at.asc()).all()
     
-    # Отмечаем входящие как прочитанные.
+    # Отмечаем входящие как доставленные/прочитанные.
+    now_utc = datetime.utcnow()
+    has_updates = False
     for message in messages:
-        if message.receiver_id == current_user.id and not message.is_read:
+        if message.receiver_id != current_user.id:
+            continue
+        if not message.delivered_at:
+            message.delivered_at = now_utc
+            has_updates = True
+        if not message.is_read:
             message.is_read = True
-    db.session.commit()
+            has_updates = True
+    if has_updates:
+        db.session.commit()
     
     # Форматируем сообщения для JSON
     messages_data = []
@@ -2233,18 +2442,166 @@ def get_messages(user_id):
     }
 
 
+@app.route('/report-message/<int:message_id>', methods=['POST'])
+@login_required
+def report_message(message_id):
+    message = Message.query.get_or_404(message_id)
+    if current_user.id not in (message.sender_id, message.receiver_id):
+        return {'success': False, 'error': 'Недостаточно прав для жалобы на это сообщение.'}, 403
+    if message.sender_id == current_user.id:
+        return {'success': False, 'error': 'Нельзя пожаловаться на собственное сообщение.'}, 400
+
+    existing_open = UserReport.query.filter_by(
+        reporter_id=current_user.id,
+        message_id=message.id,
+        status='open',
+    ).first()
+    if existing_open:
+        return {'success': True, 'report_id': existing_open.id}
+
+    reason = (request.form.get('reason') or '').strip()
+    if len(reason) > 1000:
+        return {'success': False, 'error': 'Слишком длинное описание жалобы (максимум 1000 символов).'}, 400
+
+    report = UserReport(
+        reporter_id=current_user.id,
+        reported_user_id=message.sender_id,
+        message_id=message.id,
+        reason=reason or None,
+        status='open',
+    )
+    db.session.add(report)
+    db.session.commit()
+    return {'success': True, 'report_id': report.id}
+
+
+@app.route('/groups/<int:group_id>/messages/<int:message_id>/report', methods=['POST'])
+@login_required
+def report_group_message(group_id, message_id):
+    group = StudyGroup.query.get_or_404(group_id)
+    membership = StudyGroupMembership.query.filter_by(
+        group_id=group.id,
+        user_id=current_user.id,
+    ).first()
+    if not membership:
+        return {'success': False, 'error': 'Вступите в группу, чтобы отправлять жалобы на сообщения.'}, 403
+
+    message = StudyGroupMessage.query.filter_by(
+        id=message_id,
+        group_id=group.id,
+    ).first_or_404()
+    if message.sender_id == current_user.id:
+        return {'success': False, 'error': 'Нельзя пожаловаться на собственное сообщение.'}, 400
+
+    existing_open = UserReport.query.filter_by(
+        reporter_id=current_user.id,
+        group_message_id=message.id,
+        status='open',
+    ).first()
+    if existing_open:
+        return {'success': True, 'report_id': existing_open.id}
+
+    reason = (request.form.get('reason') or '').strip()
+    if len(reason) > 1000:
+        return {'success': False, 'error': 'Слишком длинное описание жалобы (максимум 1000 символов).'}, 400
+
+    report = UserReport(
+        reporter_id=current_user.id,
+        reported_user_id=message.sender_id,
+        group_message_id=message.id,
+        reason=reason or None,
+        status='open',
+    )
+    db.session.add(report)
+    db.session.commit()
+    return {'success': True, 'report_id': report.id}
+
+
+@app.route('/report-profile/<int:profile_id>', methods=['POST'])
+@login_required
+def report_profile(profile_id):
+    profile = StudentProfile.query.get_or_404(profile_id)
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+    if not profile.is_active:
+        if is_ajax:
+            return {'success': False, 'error': '??????? ?????????.'}, 400
+        flash('??????? ?????????.', 'error')
+        return redirect(request.referrer or url_for('tinder'))
+
+    if profile.user_id == current_user.id:
+        if is_ajax:
+            return {'success': False, 'error': '?????? ???????????? ?? ???? ???????.'}, 400
+        flash('?????? ???????????? ?? ???? ???????.', 'error')
+        return redirect(request.referrer or url_for('view_profile', profile_id=profile.id))
+
+    existing_open = UserReport.query.filter_by(
+        reporter_id=current_user.id,
+        reported_user_id=profile.user_id,
+        message_id=None,
+        group_message_id=None,
+        status='open',
+    ).first()
+    if existing_open:
+        if is_ajax:
+            return {'success': True, 'report_id': existing_open.id}
+        flash('?????? ?? ??????? ??? ?????????? ? ??????? ????????????.', 'info')
+        return redirect(request.referrer or url_for('view_profile', profile_id=profile.id))
+
+    reason = (request.form.get('reason') or '').strip()
+    if len(reason) > 1000:
+        if is_ajax:
+            return {'success': False, 'error': '??????? ??????? ???????? ?????? (???????? 1000 ????????).'}, 400
+        flash('??????? ??????? ???????? ?????? (???????? 1000 ????????).', 'error')
+        return redirect(request.referrer or url_for('view_profile', profile_id=profile.id))
+
+    report = UserReport(
+        reporter_id=current_user.id,
+        reported_user_id=profile.user_id,
+        reason=reason or '?????? ?? ???????',
+        status='open',
+    )
+    db.session.add(report)
+    db.session.commit()
+
+    if is_ajax:
+        return {'success': True, 'report_id': report.id}
+
+    flash('?????? ?? ??????? ?????????? ??????????????.', 'success')
+    return redirect(request.referrer or url_for('view_profile', profile_id=profile.id))
+
+
 @app.route('/admin')
 @login_required
 @admin_required
 def admin_dashboard():
+    now_utc = datetime.utcnow()
     total_users = User.query.count()
     total_profiles = StudentProfile.query.count()
     total_active_profiles = StudentProfile.query.filter_by(is_active=True).count()
     total_matches = Match.query.count()
     total_messages = Message.query.count()
+    total_open_reports = UserReport.query.filter_by(status='open').count()
+    total_blocked_users = User.query.filter(
+        User.is_blocked.is_(True),
+        or_(User.blocked_until.is_(None), User.blocked_until > now_utc),
+    ).count()
+    total_muted_users = User.query.filter(
+        User.chat_muted_until.isnot(None),
+        User.chat_muted_until > now_utc,
+    ).count()
+    actions_last_24h = AdminActionLog.query.filter(
+        AdminActionLog.created_at >= (now_utc - timedelta(hours=24))
+    ).count()
 
     latest_users = User.query.order_by(User.created_at.desc()).limit(8).all()
     latest_profiles = StudentProfile.query.order_by(StudentProfile.created_at.desc()).limit(8).all()
+    latest_reports = (
+        UserReport.query
+        .order_by(UserReport.created_at.desc())
+        .limit(6)
+        .all()
+    )
 
     return render_template(
         'admin/dashboard.html',
@@ -2254,9 +2611,14 @@ def admin_dashboard():
             'total_active_profiles': total_active_profiles,
             'total_matches': total_matches,
             'total_messages': total_messages,
+            'total_open_reports': total_open_reports,
+            'total_blocked_users': total_blocked_users,
+            'total_muted_users': total_muted_users,
+            'actions_last_24h': actions_last_24h,
         },
         latest_users=latest_users,
         latest_profiles=latest_profiles,
+        latest_reports=latest_reports,
     )
 
 
@@ -2264,8 +2626,121 @@ def admin_dashboard():
 @login_required
 @admin_required
 def admin_users():
+    now_utc = datetime.utcnow()
     users = User.query.order_by(User.created_at.desc()).all()
-    return render_template('admin/users.html', users=users)
+    effective_roles = {user.id: get_user_role(user) for user in users}
+    total_report_counts = dict(
+        db.session.query(UserReport.reported_user_id, func.count(UserReport.id))
+        .group_by(UserReport.reported_user_id)
+        .all()
+    )
+    open_report_counts = dict(
+        db.session.query(UserReport.reported_user_id, func.count(UserReport.id))
+        .filter(UserReport.status == 'open')
+        .group_by(UserReport.reported_user_id)
+        .all()
+    )
+    return render_template(
+        'admin/users.html',
+        users=users,
+        role_choices=USER_ROLE_CHOICES,
+        effective_roles=effective_roles,
+        now_utc=now_utc,
+        total_report_counts=total_report_counts,
+        open_report_counts=open_report_counts,
+    )
+
+
+@app.route('/admin/users/<int:user_id>/manage', methods=['POST'])
+@login_required
+@admin_required
+def admin_manage_user(user_id):
+    user = User.query.get_or_404(user_id)
+    action = (request.form.get('action') or '').strip().lower()
+    if not action:
+        flash('Не выбрано действие.', 'error')
+        return redirect(url_for('admin_users'))
+
+    protected_admin = bool(user.username and user.username.lower() in ADMIN_USERNAMES)
+    if user.id == current_user.id and action in {'block_user', 'set_role'}:
+        flash('Нельзя применить это действие к своему аккаунту.', 'error')
+        return redirect(url_for('admin_users'))
+
+    if action == 'set_role':
+        new_role = normalize_user_role(request.form.get('role'))
+        if new_role not in USER_ROLE_CHOICES:
+            flash('Некорректная роль.', 'error')
+            return redirect(url_for('admin_users'))
+        if protected_admin and new_role != 'admin':
+            flash('Для системного администратора роль admin обязательна.', 'error')
+            return redirect(url_for('admin_users'))
+        user.role = new_role
+        add_admin_action_log('set_role', target_user_id=user.id, details=f'role={new_role}')
+        db.session.commit()
+        flash('Роль пользователя обновлена.', 'success')
+        return redirect(url_for('admin_users'))
+
+    if action == 'mute_chat':
+        minutes_raw = (request.form.get('minutes') or '60').strip()
+        try:
+            minutes = int(minutes_raw)
+        except (TypeError, ValueError):
+            flash('Некорректная длительность мута.', 'error')
+            return redirect(url_for('admin_users'))
+        if minutes < 1 or minutes > 43200:
+            flash('Длительность мута должна быть от 1 до 43200 минут.', 'error')
+            return redirect(url_for('admin_users'))
+        until = datetime.utcnow() + timedelta(minutes=minutes)
+        user.chat_muted_until = until
+        add_admin_action_log('mute_chat', target_user_id=user.id, details=f'until={until.isoformat()}')
+        db.session.commit()
+        flash('Пользователь получил мут чата.', 'success')
+        return redirect(url_for('admin_users'))
+
+    if action == 'clear_mute':
+        user.chat_muted_until = None
+        add_admin_action_log('clear_mute', target_user_id=user.id)
+        db.session.commit()
+        flash('Мут чата снят.', 'success')
+        return redirect(url_for('admin_users'))
+
+    if action == 'block_user':
+        if protected_admin:
+            flash('Нельзя заблокировать системного администратора.', 'error')
+            return redirect(url_for('admin_users'))
+        hours_raw = (request.form.get('hours') or '').strip()
+        until = None
+        if hours_raw:
+            try:
+                hours = int(hours_raw)
+            except (TypeError, ValueError):
+                flash('Некорректная длительность блокировки.', 'error')
+                return redirect(url_for('admin_users'))
+            if hours < 1 or hours > 8760:
+                flash('Длительность блокировки должна быть от 1 до 8760 часов.', 'error')
+                return redirect(url_for('admin_users'))
+            until = datetime.utcnow() + timedelta(hours=hours)
+        user.is_blocked = True
+        user.blocked_until = until
+        add_admin_action_log(
+            'block_user',
+            target_user_id=user.id,
+            details=f'until={until.isoformat() if until else "permanent"}',
+        )
+        db.session.commit()
+        flash('Пользователь заблокирован.', 'success')
+        return redirect(url_for('admin_users'))
+
+    if action == 'unblock_user':
+        user.is_blocked = False
+        user.blocked_until = None
+        add_admin_action_log('unblock_user', target_user_id=user.id)
+        db.session.commit()
+        flash('Пользователь разблокирован.', 'success')
+        return redirect(url_for('admin_users'))
+
+    flash('Неизвестное действие.', 'error')
+    return redirect(url_for('admin_users'))
 
 
 @app.route('/admin/users/<int:user_id>/delete', methods=['POST'])
@@ -2277,9 +2752,30 @@ def admin_delete_user(user_id):
         return redirect(url_for('admin_users'))
 
     user = User.query.get_or_404(user_id)
+    protected_admin = bool(user.username and user.username.lower() in ADMIN_USERNAMES)
+    if protected_admin:
+        flash('Нельзя удалить системного администратора.', 'error')
+        return redirect(url_for('admin_users'))
 
     if user.profile and user.profile.photo_filename:
         delete_profile_photo(user.profile.photo_filename)
+
+    message_ids_to_delete = [
+        row[0]
+        for row in db.session.query(Message.id).filter(
+            or_(Message.sender_id == user_id, Message.receiver_id == user_id)
+        ).all()
+    ]
+
+    if message_ids_to_delete:
+        UserReport.query.filter(UserReport.message_id.in_(message_ids_to_delete)).delete(synchronize_session=False)
+    UserReport.query.filter(
+        or_(
+            UserReport.reporter_id == user_id,
+            UserReport.reported_user_id == user_id,
+            UserReport.resolved_by_id == user_id,
+        )
+    ).delete(synchronize_session=False)
 
     Like.query.filter(or_(Like.liker_id == user_id, Like.liked_id == user_id)).delete(synchronize_session=False)
     Match.query.filter(or_(Match.user1_id == user_id, Match.user2_id == user_id)).delete(synchronize_session=False)
@@ -2300,6 +2796,7 @@ def admin_delete_user(user_id):
     StudyGroupMembership.query.filter(StudyGroupMembership.user_id == user_id).delete(synchronize_session=False)
     StudyGroup.query.filter(StudyGroup.creator_id == user_id).delete(synchronize_session=False)
 
+    add_admin_action_log('delete_user', target_user_id=user.id, details=f'username={user.username}')
     db.session.delete(user)
     db.session.commit()
 
@@ -2318,6 +2815,156 @@ def admin_messages():
         .all()
     )
     return render_template('admin/messages.html', messages=messages)
+
+
+@app.route('/admin/reports')
+@login_required
+@admin_required
+def admin_reports():
+    open_reports = (
+        UserReport.query
+        .filter(UserReport.status == 'open')
+        .order_by(UserReport.created_at.desc())
+        .all()
+    )
+    resolved_reports = (
+        UserReport.query
+        .filter(UserReport.status != 'open')
+        .order_by(UserReport.resolved_at.desc(), UserReport.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    reports = open_reports + resolved_reports
+    return render_template('admin/reports.html', reports=reports, now_utc=datetime.utcnow())
+
+
+@app.route('/admin/reports/<int:report_id>/action', methods=['POST'])
+@login_required
+@admin_required
+def admin_report_action(report_id):
+    report = UserReport.query.get_or_404(report_id)
+    action = (request.form.get('action') or '').strip().lower()
+    if action not in {'delete_message', 'warn_user', 'ban_user', 'dismiss'}:
+        flash('Неизвестное действие по жалобе.', 'error')
+        return redirect(url_for('admin_reports'))
+
+    if report.status != 'open':
+        flash('Жалоба уже обработана.', 'info')
+        return redirect(url_for('admin_reports'))
+
+    resolution_note = (request.form.get('note') or '').strip()
+    message_for_flash = 'Жалоба обработана.'
+    details = []
+
+    if action == 'delete_message':
+        deleted_any_message = False
+        if report.message and not report.message.deleted_at:
+            delete_uploaded_file(report.message.attachment_filename)
+            report.message.content = ''
+            report.message.attachment_filename = None
+            report.message.attachment_original_name = None
+            report.message.attachment_mime_type = None
+            report.message.attachment_size = None
+            report.message.attachment_type = None
+            report.message.deleted_at = datetime.utcnow()
+            report.message.edited_at = None
+            details.append('message_deleted')
+            deleted_any_message = True
+        if report.group_message and not report.group_message.deleted_at:
+            delete_uploaded_file(report.group_message.attachment_filename)
+            report.group_message.content = ''
+            report.group_message.attachment_filename = None
+            report.group_message.attachment_original_name = None
+            report.group_message.attachment_mime_type = None
+            report.group_message.attachment_size = None
+            report.group_message.attachment_type = None
+            report.group_message.deleted_at = datetime.utcnow()
+            report.group_message.edited_at = None
+            details.append('group_message_deleted')
+            deleted_any_message = True
+        if not deleted_any_message:
+            details.append('message_missing_or_already_deleted')
+        report.action_taken = 'delete_message'
+        if deleted_any_message:
+            message_for_flash = '��������� �������, ������ �������.'
+        else:
+            message_for_flash = '��������� ��� ������� ��� ����������, ������ �������.'
+
+    elif action == 'warn_user':
+        report.action_taken = 'warn_user'
+        if not resolution_note:
+            resolution_note = 'Предупреждение зафиксировано администратором.'
+        message_for_flash = 'Пользователю вынесено предупреждение.'
+
+    elif action == 'ban_user':
+        target = report.reported_user
+        if not target:
+            flash('Не удалось определить пользователя для блокировки.', 'error')
+            return redirect(url_for('admin_reports'))
+        if target.username and target.username.lower() in ADMIN_USERNAMES:
+            flash('Нельзя заблокировать системного администратора.', 'error')
+            return redirect(url_for('admin_reports'))
+        hours_raw = (request.form.get('hours') or '24').strip()
+        try:
+            hours = int(hours_raw)
+        except (TypeError, ValueError):
+            flash('Некорректная длительность блокировки.', 'error')
+            return redirect(url_for('admin_reports'))
+        if hours < 1 or hours > 8760:
+            flash('Длительность блокировки должна быть от 1 до 8760 часов.', 'error')
+            return redirect(url_for('admin_reports'))
+        target.is_blocked = True
+        target.blocked_until = datetime.utcnow() + timedelta(hours=hours)
+        report.action_taken = 'ban_user'
+        if not resolution_note:
+            resolution_note = f'Блокировка пользователя на {hours} ч.'
+        message_for_flash = 'Пользователь заблокирован, жалоба закрыта.'
+        details.append(f'ban_hours={hours}')
+
+    elif action == 'dismiss':
+        report.action_taken = 'dismissed'
+        if not resolution_note:
+            resolution_note = 'Жалоба отклонена администратором.'
+        message_for_flash = 'Жалоба отклонена.'
+
+    report.status = 'resolved'
+    report.resolved_at = datetime.utcnow()
+    report.resolved_by_id = current_user.id
+    if details:
+        resolution_note = (resolution_note + ' ' if resolution_note else '') + '; '.join(details)
+    report.resolution_note = resolution_note or None
+
+    add_admin_action_log(
+        action,
+        target_user_id=report.reported_user_id,
+        report_id=report.id,
+        message_id=report.message_id or report.group_message_id,
+        details=report.resolution_note,
+    )
+    db.session.commit()
+    flash(message_for_flash, 'success')
+    return redirect(url_for('admin_reports'))
+
+
+@app.route('/admin/logs')
+@login_required
+@admin_required
+def admin_logs():
+    logs = (
+        AdminActionLog.query
+        .order_by(AdminActionLog.created_at.desc())
+        .limit(500)
+        .all()
+    )
+    user_ids = set()
+    for log in logs:
+        if log.admin_id:
+            user_ids.add(log.admin_id)
+        if log.target_user_id:
+            user_ids.add(log.target_user_id)
+    users = User.query.filter(User.id.in_(list(user_ids))).all() if user_ids else []
+    user_map = {user.id: user for user in users}
+    return render_template('admin/logs.html', logs=logs, user_map=user_map)
 
 @app.route('/profile/<int:profile_id>')
 @login_required
@@ -2442,9 +3089,30 @@ def test_profile_form():
 
 def run_schema_migrations():
     """Простейшие миграции схемы без Alembic."""
+    db.metadata.create_all(db.engine, tables=[UserReport.__table__, AdminActionLog.__table__])
     inspector = inspect(db.engine)
     statements = []
     table_names = set(inspector.get_table_names())
+
+    if 'user' in table_names:
+        user_columns = {col['name'] for col in inspector.get_columns('user')}
+        if 'role' not in user_columns:
+            statements.append('ALTER TABLE "user" ADD COLUMN role VARCHAR(20) DEFAULT \'user\'')
+        if 'is_blocked' not in user_columns:
+            statements.append('ALTER TABLE "user" ADD COLUMN is_blocked BOOLEAN DEFAULT FALSE')
+        if 'blocked_until' not in user_columns:
+            statements.append('ALTER TABLE "user" ADD COLUMN blocked_until TIMESTAMP')
+        if 'chat_muted_until' not in user_columns:
+            statements.append('ALTER TABLE "user" ADD COLUMN chat_muted_until TIMESTAMP')
+        if 'role' in user_columns:
+            statements.append('UPDATE "user" SET role = \'user\' WHERE role IS NULL')
+        if 'is_blocked' in user_columns:
+            statements.append('UPDATE "user" SET is_blocked = FALSE WHERE is_blocked IS NULL')
+
+    if 'user_report' in table_names:
+        user_report_columns = {col['name'] for col in inspector.get_columns('user_report')}
+        if 'group_message_id' not in user_report_columns:
+            statements.append('ALTER TABLE user_report ADD COLUMN group_message_id INTEGER')
 
     if 'message' in table_names:
         message_columns = {col['name'] for col in inspector.get_columns('message')}
@@ -2460,6 +3128,8 @@ def run_schema_migrations():
             statements.append('ALTER TABLE message ADD COLUMN attachment_size INTEGER')
         if 'attachment_type' not in message_columns:
             statements.append('ALTER TABLE message ADD COLUMN attachment_type VARCHAR(20)')
+        if 'delivered_at' not in message_columns:
+            statements.append('ALTER TABLE message ADD COLUMN delivered_at TIMESTAMP')
         if 'edited_at' not in message_columns:
             statements.append('ALTER TABLE message ADD COLUMN edited_at TIMESTAMP')
         if 'deleted_at' not in message_columns:

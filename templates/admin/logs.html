@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Админ · Логи действий{% endblock %}
+
+{% block content %}
+<section class="card admin-page">
+    <div class="admin-page-header">
+        <div>
+            <h2>Логи действий админов</h2>
+            <p class="admin-subtitle">Кто и когда удалил, заблокировал, изменил роли или обработал жалобы</p>
+        </div>
+        <div class="admin-head-links">
+            <a href="{{ url_for('admin_users') }}" class="btn btn-secondary">Пользователи</a>
+            <a href="{{ url_for('admin_reports') }}" class="btn btn-secondary">Жалобы</a>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline">← Панель</a>
+        </div>
+    </div>
+
+    {% if logs %}
+        <div class="admin-table-wrapper">
+            <table class="admin-table admin-logs-table">
+                <thead>
+                    <tr>
+                        <th>Время</th>
+                        <th>Админ</th>
+                        <th>Действие</th>
+                        <th>Цель</th>
+                        <th>Связи</th>
+                        <th>Детали</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                        {% set admin_user = user_map.get(log.admin_id) %}
+                        {% set target_user = user_map.get(log.target_user_id) if log.target_user_id else None %}
+                        <tr>
+                            <td>{{ log.created_at.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+                            <td>
+                                {% if admin_user %}
+                                    {{ admin_user.username }}<br>
+                                    <span class="meta">#{{ admin_user.id }}</span>
+                                {% else %}
+                                    ID {{ log.admin_id }}
+                                {% endif %}
+                            </td>
+                            <td><span class="badge badge-info">{{ log.action }}</span></td>
+                            <td>
+                                {% if target_user %}
+                                    {{ target_user.username }}<br>
+                                    <span class="meta">#{{ target_user.id }}</span>
+                                {% elif log.target_user_id %}
+                                    ID {{ log.target_user_id }}
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if log.report_id %}<div class="meta">report #{{ log.report_id }}</div>{% endif %}
+                                {% if log.message_id %}<div class="meta">message #{{ log.message_id }}</div>{% endif %}
+                                {% if not log.report_id and not log.message_id %}<span class="meta">—</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if log.details %}
+                                    {{ log.details }}
+                                {% else %}
+                                    <span class="meta">—</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p class="empty">Логи пока пусты.</p>
+    {% endif %}
+</section>
+{% endblock %}

@@ -98,7 +98,7 @@
                             <div class="group-chat-message-meta">
                                 <span class="group-chat-message-author">
                                     {% if sender_profile %}
-                                        {{ sender_profile.full_name }}
+                                        <a href="{{ url_for('view_profile', profile_id=sender_profile.id) }}" class="group-chat-author-link">{{ sender_profile.full_name }}</a>
                                     {% else %}
                                         {{ sender.username }}
                                     {% endif %}
@@ -169,6 +169,17 @@
                                         <span class="group-chat-message-menu-icon">⧉</span>
                                         <span>Копировать текст</span>
                                     </button>
+                                    {% if message.sender_id != current_user.id %}
+                                    <button
+                                        type="button"
+                                        class="group-chat-message-menu-item"
+                                        data-action="report"
+                                        data-report-url="{{ url_for('report_group_message', group_id=group.id, message_id=message.id) }}"
+                                    >
+                                        <span class="group-chat-message-menu-icon">⚑</span>
+                                        <span>Пожаловаться</span>
+                                    </button>
+                                    {% endif %}
                                     {% if message.sender_id == current_user.id %}
                                     <button
                                         type="button"
@@ -194,7 +205,9 @@
                 {% if chat_blocked|default(false) %}
                 <div class="chat-ban-banner" role="alert">
                     <strong>Отправка сообщений ограничена.</strong>
-                    {% if chat_blocked_until %}
+                    {% if chat_blocked_message %}
+                    {{ chat_blocked_message }}
+                    {% elif chat_blocked_until %}
                     Снова можно будет писать после {{ chat_blocked_until.strftime('%d.%m.%Y %H:%M') }} UTC (нарушения правил чата).
                     {% else %}
                     Попробуйте позже.
@@ -293,6 +306,19 @@ document.addEventListener('DOMContentLoaded', function() {
     const groupPinnedJumpBtn = document.getElementById('groupPinnedJumpBtn');
     const groupPinnedCloseBtn = document.getElementById('groupPinnedCloseBtn');
     const deletedLabel = 'Сообщение удалено';
+    const reportReasonOptions = [
+        'Не нравится',
+        'Жестокое обращение с детьми',
+        'Насилие',
+        'Незаконные товары и услуги',
+        'Порнографические материалы',
+        'Персональные данные',
+        'Мошенничество',
+        'Нарушение авторских прав',
+        'Спам',
+        'Другое',
+        'Не нарушает закон, но надо удалить'
+    ];
     let groupPinnedMessageId = null;
 
     if (!groupChatForm) return;
@@ -308,6 +334,77 @@ document.addEventListener('DOMContentLoaded', function() {
         const normalized = String(text || '').replace(/\s+/g, ' ').trim();
         if (normalized.length <= limit) return normalized;
         return `${normalized.slice(0, limit - 1)}…`;
+    }
+
+    function openReportReasonDialog() {
+        return new Promise(function(resolve) {
+            const overlay = document.createElement('div');
+            overlay.className = 'report-reason-overlay';
+
+            const modal = document.createElement('div');
+            modal.className = 'report-reason-modal';
+            modal.innerHTML = '<div class="report-reason-title">Что не так с этим сообщением?</div>';
+
+            const list = document.createElement('div');
+            list.className = 'report-reason-list';
+
+            let finished = false;
+            function close(value) {
+                if (finished) return;
+                finished = true;
+                document.removeEventListener('keydown', onKeyDown);
+                overlay.remove();
+                resolve(value || null);
+            }
+
+            function onKeyDown(event) {
+                if (event.key === 'Escape') {
+                    close(null);
+                }
+            }
+
+            reportReasonOptions.forEach(function(reason) {
+                const optionButton = document.createElement('button');
+                optionButton.type = 'button';
+                optionButton.className = 'report-reason-option';
+                optionButton.textContent = reason;
+                optionButton.addEventListener('click', function() {
+                    if (reason === 'Другое') {
+                        const custom = window.prompt('Опишите причину жалобы:');
+                        if (custom === null) return;
+                        const customText = custom.trim();
+                        if (!customText) {
+                            window.alert('Введите причину жалобы.');
+                            return;
+                        }
+                        close('Другое: ' + customText);
+                        return;
+                    }
+                    close(reason);
+                });
+                list.appendChild(optionButton);
+            });
+
+            const closeButton = document.createElement('button');
+            closeButton.type = 'button';
+            closeButton.className = 'report-reason-close';
+            closeButton.textContent = 'Закрыть';
+            closeButton.addEventListener('click', function() {
+                close(null);
+            });
+
+            modal.appendChild(list);
+            modal.appendChild(closeButton);
+            overlay.appendChild(modal);
+            overlay.addEventListener('click', function(event) {
+                if (event.target === overlay) {
+                    close(null);
+                }
+            });
+
+            document.body.appendChild(overlay);
+            document.addEventListener('keydown', onKeyDown);
+        });
     }
 
     function setGroupReplyTarget(target) {
@@ -483,6 +580,39 @@ document.addEventListener('DOMContentLoaded', function() {
             if (action === 'copy') {
                 copyGroupMessageText(messageEl).catch(function() {
                     window.alert('Не удалось скопировать текст.');
+                });
+                return;
+            }
+
+            if (action === 'report') {
+                const reportUrl = actionBtn.dataset.reportUrl;
+                if (!reportUrl) return;
+                openReportReasonDialog().then(function(reason) {
+                    if (!reason) return;
+                    const body = new FormData();
+                    body.append('reason', reason);
+                    fetch(reportUrl, {
+                        method: 'POST',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        body: body,
+                    })
+                        .then(function(response) {
+                            return response.json().catch(function() {
+                                return { success: false, error: 'Не удалось отправить жалобу.' };
+                            });
+                        })
+                        .then(function(data) {
+                            if (data.success) {
+                                window.alert('Жалоба отправлена администратору.');
+                                return;
+                            }
+                            window.alert(data.error || 'Не удалось отправить жалобу.');
+                        })
+                        .catch(function() {
+                            window.alert('Не удалось отправить жалобу.');
+                        });
                 });
                 return;
             }

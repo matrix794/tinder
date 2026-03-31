@@ -9,7 +9,11 @@
             <h2>Переписки пользователей</h2>
             <p class="admin-subtitle">Последние сообщения (до 200 записей)</p>
         </div>
-        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline">← Панель</a>
+        <div class="admin-head-links">
+            <a href="{{ url_for('admin_reports') }}" class="btn btn-secondary">Жалобы</a>
+            <a href="{{ url_for('admin_logs') }}" class="btn btn-secondary">Логи</a>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline">← Панель</a>
+        </div>
     </div>
 
     {% if messages %}
@@ -28,12 +32,12 @@
                         <tr>
                             <td>{{ message.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
                             <td>
-                                {{ message.sender.profile.full_name if message.sender.profile else message.sender.username }}<br>
-                                <span class="meta">@{{ message.sender.username }}</span>
+                                {{ message.sender.profile.full_name if message.sender and message.sender.profile else (message.sender.username if message.sender else '—') }}<br>
+                                {% if message.sender %}<span class="meta">@{{ message.sender.username }}</span>{% endif %}
                             </td>
                             <td>
-                                {{ message.receiver.profile.full_name if message.receiver.profile else message.receiver.username }}<br>
-                                <span class="meta">@{{ message.receiver.username }}</span>
+                                {{ message.receiver.profile.full_name if message.receiver and message.receiver.profile else (message.receiver.username if message.receiver else '—') }}<br>
+                                {% if message.receiver %}<span class="meta">@{{ message.receiver.username }}</span>{% endif %}
                             </td>
                             <td>
                                 {% if message.deleted_at %}
@@ -62,4 +66,3 @@
     {% endif %}
 </section>
 {% endblock %}
-

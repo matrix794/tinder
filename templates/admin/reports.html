@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Админ · Жалобы{% endblock %}
+{% block body_class %}admin-reports-page{% endblock %}
+
+{% block content %}
+<section class="card admin-page admin-reports-card">
+    <div class="admin-page-header">
+        <div>
+            <h2>Очередь жалоб</h2>
+            <p class="admin-subtitle">Кто пожаловался, на кого и какие меры приняты</p>
+        </div>
+        <div class="admin-head-links">
+            <a href="{{ url_for('admin_users') }}" class="btn btn-secondary">Пользователи</a>
+            <a href="{{ url_for('admin_logs') }}" class="btn btn-secondary">Логи</a>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline">← Панель</a>
+        </div>
+    </div>
+
+    {% if reports %}
+        <div class="admin-table-wrapper">
+            <table class="admin-table admin-reports-table">
+                <thead>
+                    <tr>
+                        <th>Время</th>
+                        <th>Кто пожаловался</th>
+                        <th>На кого</th>
+                        <th>Контекст</th>
+                        <th>Причина</th>
+                        <th>Статус / действие</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for report in reports %}
+                        <tr>
+                            <td>{{ report.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                            <td>
+                                {{ report.reporter.profile.full_name if report.reporter and report.reporter.profile else (report.reporter.username if report.reporter else '—') }}<br>
+                                {% if report.reporter %}<span class="meta">@{{ report.reporter.username }}</span>{% endif %}
+                            </td>
+                            <td>
+                                {{ report.reported_user.profile.full_name if report.reported_user and report.reported_user.profile else (report.reported_user.username if report.reported_user else '—') }}<br>
+                                {% if report.reported_user %}<span class="meta">@{{ report.reported_user.username }}</span>{% endif %}
+                            </td>
+                            <td>
+                                {% if report.message %}
+                                    {% if report.message.deleted_at %}
+                                        <div class="message-bubble">Личное сообщение удалено</div>
+                                    {% elif report.message.content %}
+                                        <div class="message-bubble">{{ report.message.content|truncate(160, true, '…') }}</div>
+                                    {% elif report.message.attachment_filename %}
+                                        <div class="message-bubble">[Вложение] {{ report.message.attachment_original_name or report.message.attachment_filename }}</div>
+                                    {% else %}
+                                        <div class="message-bubble">Личное сообщение</div>
+                                    {% endif %}
+                                {% elif report.group_message %}
+                                    {% if report.group_message.deleted_at %}
+                                        <div class="message-bubble">Сообщение в группе удалено</div>
+                                    {% elif report.group_message.content %}
+                                        <div class="message-bubble">[Группа] {{ report.group_message.content|truncate(160, true, '…') }}</div>
+                                    {% elif report.group_message.attachment_filename %}
+                                        <div class="message-bubble">[Группа][Вложение] {{ report.group_message.attachment_original_name or report.group_message.attachment_filename }}</div>
+                                    {% else %}
+                                        <div class="message-bubble">Сообщение в группе</div>
+                                    {% endif %}
+                                {% else %}
+                                    <div class="message-bubble">Жалоба на профиль</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if report.reason %}
+                                    {{ report.reason }}
+                                {% else %}
+                                    <span class="meta">Без комментария</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if report.status == 'open' %}
+                                    <span class="badge badge-warning">Открыта</span>
+                                    <div class="admin-report-actions">
+                                        {% if report.message or report.group_message %}
+                                        <form action="{{ url_for('admin_report_action', report_id=report.id) }}" method="post">
+                                            <input type="hidden" name="action" value="delete_message">
+                                            <button type="submit" class="btn btn-secondary">Удалить сообщение</button>
+                                        </form>
+                                        {% endif %}
+                                        <form action="{{ url_for('admin_report_action', report_id=report.id) }}" method="post">
+                                            <input type="hidden" name="action" value="warn_user">
+                                            <button type="submit" class="btn btn-secondary">Предупредить</button>
+                                        </form>
+                                        <form action="{{ url_for('admin_report_action', report_id=report.id) }}" method="post" class="admin-inline-row">
+                                            <input type="hidden" name="action" value="ban_user">
+                                            <input type="number" name="hours" class="form-input admin-compact-input" min="1" max="8760" value="24" title="Часы блокировки">
+                                            <button type="submit" class="btn btn-danger">Бан</button>
+                                        </form>
+                                        <form action="{{ url_for('admin_report_action', report_id=report.id) }}" method="post">
+                                            <input type="hidden" name="action" value="dismiss">
+                                            <button type="submit" class="btn btn-outline">Отклонить</button>
+                                        </form>
+                                    </div>
+                                {% else %}
+                                    <div class="admin-report-resolved">
+                                        <span class="badge badge-success">Обработана</span>
+                                        <div class="meta">Действие: {{ report.action_taken or '—' }}</div>
+                                        {% if report.resolved_by %}
+                                        <div class="meta">Админ: {{ report.resolved_by.username }}</div>
+                                        {% endif %}
+                                        {% if report.resolved_at %}
+                                        <div class="meta">{{ report.resolved_at.strftime('%d.%m.%Y %H:%M') }}</div>
+                                        {% endif %}
+                                        {% if report.resolution_note %}
+                                        <div class="meta">{{ report.resolution_note }}</div>
+                                        {% endif %}
+                                    </div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p class="empty">Жалоб пока нет.</p>
+    {% endif %}
+</section>
+{% endblock %}

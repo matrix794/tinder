@@ -6,32 +6,25 @@
 <section class="card admin-dashboard">
     <div class="admin-header">
         <h2>Административная панель</h2>
-        <p class="admin-subtitle">Мониторинг активности сообщества и последние события</p>
+        <p class="admin-subtitle">Модерация пользователей, жалоб и сообщений</p>
     </div>
 
     <div class="admin-actions">
-        <a href="{{ url_for('admin_users') }}" class="btn btn-primary">Управление пользователями</a>
-        <a href="{{ url_for('admin_messages') }}" class="btn btn-secondary">Просмотр сообщений</a>
+        <a href="{{ url_for('admin_users') }}" class="btn btn-primary">Пользователи</a>
+        <a href="{{ url_for('admin_reports') }}" class="btn btn-secondary">Жалобы</a>
+        <a href="{{ url_for('admin_messages') }}" class="btn btn-secondary">Сообщения</a>
+        <a href="{{ url_for('admin_logs') }}" class="btn btn-secondary">Логи действий</a>
     </div>
 
-    <div class="admin-stats-grid">
-        <div class="admin-stat-card">
-            <span class="label">Пользователи</span>
-            <strong>{{ stats.total_users }}</strong>
-        </div>
-        <div class="admin-stat-card">
-            <span class="label">Профили</span>
-            <strong>{{ stats.total_profiles }}</strong>
-            <small>{{ stats.total_active_profiles }} активных</small>
-        </div>
-        <div class="admin-stat-card">
-            <span class="label">Матчи</span>
-            <strong>{{ stats.total_matches }}</strong>
-        </div>
-        <div class="admin-stat-card">
-            <span class="label">Сообщения</span>
-            <strong>{{ stats.total_messages }}</strong>
-        </div>
+    <div class="admin-kpi-line" aria-label="Статистика панели">
+        <span class="admin-kpi-item"><strong>{{ stats.total_users }}</strong> пользователей</span>
+        <span class="admin-kpi-item"><strong>{{ stats.total_profiles }}</strong> профилей</span>
+        <span class="admin-kpi-item"><strong>{{ stats.total_matches }}</strong> матчей</span>
+        <span class="admin-kpi-item"><strong>{{ stats.total_messages }}</strong> сообщений</span>
+        <span class="admin-kpi-item"><strong>{{ stats.total_open_reports }}</strong> открытых жалоб</span>
+        <span class="admin-kpi-item"><strong>{{ stats.total_blocked_users }}</strong> блокировок</span>
+        <span class="admin-kpi-item"><strong>{{ stats.total_muted_users }}</strong> мутов</span>
+        <span class="admin-kpi-item"><strong>{{ stats.actions_last_24h }}</strong> действий за 24ч</span>
     </div>
 
     <div class="admin-columns">
@@ -51,6 +44,7 @@
                 <p class="empty">Пока нет данных.</p>
             {% endif %}
         </div>
+
         <div class="admin-column">
             <h3>Новые профили</h3>
             {% if latest_profiles %}
@@ -64,10 +58,33 @@
                     {% endfor %}
                 </ul>
             {% else %}
-                <p class="empty">Нет активных профилей.</p>
+                <p class="empty">Нет профилей.</p>
+            {% endif %}
+        </div>
+
+        <div class="admin-column">
+            <h3>Последние жалобы</h3>
+            {% if latest_reports %}
+                <ul class="admin-list">
+                    {% for report in latest_reports %}
+                        <li>
+                            <span class="primary">
+                                {{ report.reported_user.profile.full_name if report.reported_user and report.reported_user.profile else (report.reported_user.username if report.reported_user else 'Пользователь') }}
+                            </span>
+                            <span class="meta">
+                                Жалоба от {{ report.reporter.username if report.reporter else 'неизвестно' }}
+                            </span>
+                            <span class="time">
+                                {{ report.created_at.strftime('%d.%m.%Y %H:%M') }}
+                                · {{ 'открыта' if report.status == 'open' else 'обработана' }}
+                            </span>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="empty">Жалоб пока нет.</p>
             {% endif %}
         </div>
     </div>
 </section>
 {% endblock %}
-
