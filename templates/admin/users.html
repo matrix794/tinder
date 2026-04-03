@@ -36,7 +36,9 @@
                     {% for user in users %}
                         {% set user_role = effective_roles.get(user.id, user.role or 'user') %}
                         {% set blocked_now = user.is_blocked and (not user.blocked_until or user.blocked_until > now_utc) %}
-                        {% set muted_now = user.chat_muted_until and user.chat_muted_until > now_utc %}
+                        {% set manual_muted_now = user.chat_muted_until and user.chat_muted_until > now_utc %}
+                        {% set auto_muted_now = user.profanity_blocked_until and user.profanity_blocked_until > now_utc %}
+                        {% set muted_now = manual_muted_now or auto_muted_now %}
                         <tr>
                             <td>#{{ user.id }}</td>
                             <td>
@@ -47,7 +49,7 @@
                             </td>
                             <td>{{ user.email }}</td>
                             <td>
-                                <span class="badge {% if user_role == 'admin' %}badge-danger{% elif user_role == 'moderator' %}badge-warning{% else %}badge-info{% endif %}">
+                                <span class="badge {% if user_role == 'admin' %}badge-danger{% else %}badge-info{% endif %}">
                                     {{ user_role }}
                                 </span>
                             </td>
@@ -60,7 +62,12 @@
                                     <span class="badge badge-success">активен</span>
                                 {% endif %}
                                 {% if muted_now %}
+                                    {% if manual_muted_now %}
                                     <span class="badge badge-warning">мут до {{ user.chat_muted_until.strftime('%d.%m %H:%M') }}</span>
+                                    {% endif %}
+                                    {% if auto_muted_now %}
+                                    <span class="badge badge-warning">авто-мут до {{ user.profanity_blocked_until.strftime('%d.%m %H:%M') }}</span>
+                                    {% endif %}
                                 {% endif %}
                             </td>
                             <td>

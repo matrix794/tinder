@@ -1421,6 +1421,28 @@ body.chat-fullscreen .flash-messages {
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(124, 158, 214, 0.75) rgba(18, 34, 58, 0.65);
+    scrollbar-gutter: stable;
+}
+
+.chat-sidebar-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.chat-sidebar-list::-webkit-scrollbar-track {
+    background: rgba(18, 34, 58, 0.65);
+    border-radius: 999px;
+}
+
+.chat-sidebar-list::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(93, 153, 255, 0.92), rgba(126, 103, 243, 0.9));
+    border-radius: 999px;
+    border: 1px solid rgba(18, 34, 58, 0.9);
+}
+
+.chat-sidebar-list::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(120, 174, 255, 0.98), rgba(148, 124, 255, 0.95));
 }
 
 .chat-sidebar-item {

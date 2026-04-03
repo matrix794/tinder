@@ -75,7 +75,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Администраторы (список логинов через запятую в ENV ADMIN_USERS)
 ADMIN_USERNAMES = {name.strip().lower() for name in os.environ.get('ADMIN_USERS', 'admin').split(',') if name.strip()}
-USER_ROLE_CHOICES = ('user', 'moderator', 'admin')
+USER_ROLE_CHOICES = ('user', 'admin')
 
 db = SQLAlchemy(app)
 login_manager = LoginManager()
@@ -586,7 +586,8 @@ def is_admin(user):
 
 
 def is_moderator(user):
-    return get_user_role(user) in ('moderator', 'admin')
+    # Роль moderator удалена: оставляем совместимость как alias admin.
+    return get_user_role(user) == 'admin'
 
 
 def clear_expired_user_restrictions(user):
@@ -601,6 +602,9 @@ def clear_expired_user_restrictions(user):
             changed = True
     if getattr(user, 'chat_muted_until', None) and user.chat_muted_until <= now_utc:
         user.chat_muted_until = None
+        changed = True
+    if getattr(user, 'profanity_blocked_until', None) and user.profanity_blocked_until <= now_utc:
+        user.profanity_blocked_until = None
         changed = True
     if changed:
         db.session.commit()
@@ -1202,7 +1206,7 @@ def login():
             next_page = request.args.get('next')
             return redirect(next_page) if next_page else redirect(url_for('index'))
         else:
-            flash('Неверное имя пользователя или пароль', 'error')
+            form.password.errors.append('Неверное имя пользователя или пароль')
     
     return render_template('login.html', form=form)
 
@@ -2116,8 +2120,8 @@ def chat(user_id):
         
         print(f"Найдено сообщений: {len(messages)}")
         
-        # При открытии чата отмечаем входящие как доставленные.
-        # В прочитанные переводим при синхронизации /get-messages (когда чат уже активен).
+        # При открытии чата отмечаем входящие как доставленные и прочитанные,
+        # чтобы счётчик непрочитанных сразу сбрасывался без ответа в чат.
         now_utc = datetime.utcnow()
         has_updates = False
         for message in messages:
@@ -2125,6 +2129,9 @@ def chat(user_id):
                 continue
             if not message.delivered_at:
                 message.delivered_at = now_utc
+                has_updates = True
+            if not message.is_read:
+                message.is_read = True
                 has_updates = True
         if has_updates:
             db.session.commit()
@@ -2525,14 +2532,14 @@ def report_profile(profile_id):
 
     if not profile.is_active:
         if is_ajax:
-            return {'success': False, 'error': '??????? ?????????.'}, 400
-        flash('??????? ?????????.', 'error')
+            return {'success': False, 'error': 'Профиль неактивен.'}, 400
+        flash('Профиль неактивен.', 'error')
         return redirect(request.referrer or url_for('tinder'))
 
     if profile.user_id == current_user.id:
         if is_ajax:
-            return {'success': False, 'error': '?????? ???????????? ?? ???? ???????.'}, 400
-        flash('?????? ???????????? ?? ???? ???????.', 'error')
+            return {'success': False, 'error': 'Нельзя жаловаться на свой профиль.'}, 400
+        flash('Нельзя жаловаться на свой профиль.', 'error')
         return redirect(request.referrer or url_for('view_profile', profile_id=profile.id))
 
     existing_open = UserReport.query.filter_by(
@@ -2545,20 +2552,20 @@ def report_profile(profile_id):
     if existing_open:
         if is_ajax:
             return {'success': True, 'report_id': existing_open.id}
-        flash('?????? ?? ??????? ??? ?????????? ? ??????? ????????????.', 'info')
+        flash('Жалоба на профиль уже отправлена и ожидает рассмотрения.', 'info')
         return redirect(request.referrer or url_for('view_profile', profile_id=profile.id))
 
     reason = (request.form.get('reason') or '').strip()
     if len(reason) > 1000:
         if is_ajax:
-            return {'success': False, 'error': '??????? ??????? ???????? ?????? (???????? 1000 ????????).'}, 400
-        flash('??????? ??????? ???????? ?????? (???????? 1000 ????????).', 'error')
+            return {'success': False, 'error': 'Слишком длинное описание жалобы (максимум 1000 символов).'}, 400
+        flash('Слишком длинное описание жалобы (максимум 1000 символов).', 'error')
         return redirect(request.referrer or url_for('view_profile', profile_id=profile.id))
 
     report = UserReport(
         reporter_id=current_user.id,
         reported_user_id=profile.user_id,
-        reason=reason or '?????? ?? ???????',
+        reason=reason or 'Жалоба на профиль',
         status='open',
     )
     db.session.add(report)
@@ -2567,7 +2574,7 @@ def report_profile(profile_id):
     if is_ajax:
         return {'success': True, 'report_id': report.id}
 
-    flash('?????? ?? ??????? ?????????? ??????????????.', 'success')
+    flash('Жалоба на профиль отправлена администраторам.', 'success')
     return redirect(request.referrer or url_for('view_profile', profile_id=profile.id))
 
 
@@ -2587,8 +2594,10 @@ def admin_dashboard():
         or_(User.blocked_until.is_(None), User.blocked_until > now_utc),
     ).count()
     total_muted_users = User.query.filter(
-        User.chat_muted_until.isnot(None),
-        User.chat_muted_until > now_utc,
+        or_(
+            User.chat_muted_until.isnot(None) & (User.chat_muted_until > now_utc),
+            User.profanity_blocked_until.isnot(None) & (User.profanity_blocked_until > now_utc),
+        )
     ).count()
     actions_last_24h = AdminActionLog.query.filter(
         AdminActionLog.created_at >= (now_utc - timedelta(hours=24))
@@ -2699,9 +2708,10 @@ def admin_manage_user(user_id):
 
     if action == 'clear_mute':
         user.chat_muted_until = None
+        user.profanity_blocked_until = None
         add_admin_action_log('clear_mute', target_user_id=user.id)
         db.session.commit()
-        flash('Мут чата снят.', 'success')
+        flash('Мут чата (включая авто-мут) снят.', 'success')
         return redirect(url_for('admin_users'))
 
     if action == 'block_user':
@@ -2757,6 +2767,9 @@ def admin_delete_user(user_id):
         flash('Нельзя удалить системного администратора.', 'error')
         return redirect(url_for('admin_users'))
 
+    deleted_user_id = user.id
+    deleted_username = user.username
+
     if user.profile and user.profile.photo_filename:
         delete_profile_photo(user.profile.photo_filename)
 
@@ -2796,8 +2809,21 @@ def admin_delete_user(user_id):
     StudyGroupMembership.query.filter(StudyGroupMembership.user_id == user_id).delete(synchronize_session=False)
     StudyGroup.query.filter(StudyGroup.creator_id == user_id).delete(synchronize_session=False)
 
-    add_admin_action_log('delete_user', target_user_id=user.id, details=f'username={user.username}')
+    # В части БД у admin_action_log может быть FK на user через target_user_id.
+    # Перед удалением снимаем ссылки на удаляемого пользователя.
+    AdminActionLog.query.filter(AdminActionLog.target_user_id == user_id).update(
+        {'target_user_id': None},
+        synchronize_session=False,
+    )
+    # Если удаляемый пользователь когда-то был админом, очищаем его записи как автора действия.
+    AdminActionLog.query.filter(AdminActionLog.admin_id == user_id).delete(synchronize_session=False)
+
     db.session.delete(user)
+    add_admin_action_log(
+        'delete_user',
+        target_user_id=None,
+        details=f'deleted_user_id={deleted_user_id};username={deleted_username}',
+    )
     db.session.commit()
 
     flash('Пользователь удален.', 'success')
@@ -3106,6 +3132,7 @@ def run_schema_migrations():
             statements.append('ALTER TABLE "user" ADD COLUMN chat_muted_until TIMESTAMP')
         if 'role' in user_columns:
             statements.append('UPDATE "user" SET role = \'user\' WHERE role IS NULL')
+            statements.append('UPDATE "user" SET role = \'user\' WHERE role NOT IN (\'user\', \'admin\')')
         if 'is_blocked' in user_columns:
             statements.append('UPDATE "user" SET is_blocked = FALSE WHERE is_blocked IS NULL')
 

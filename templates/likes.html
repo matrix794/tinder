@@ -8,7 +8,6 @@
         {% set item = likes[0] %}
         <div class="tinder-header">
             <h1>Кто поставил вам лайк</h1>
-            <p>Просматривайте входящие лайки и решайте, ставить ли лайк в ответ.</p>
         </div>
 
         <div class="tinder-card-container">
@@ -22,18 +21,48 @@
                         </div>
                     {% endif %}
                     <div class="card-photo-overlay"></div>
+                    <button type="button" class="dc-info-btn" id="likesInfoBtn" aria-label="Подробнее" title="Подробнее">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    </button>
                 </div>
                 
-                <div class="card-info discover-info">
-                    <div class="card-header">
-                        <h2>{{ item.profile.full_name }}</h2>
+                <div class="dc-content">
+                    <div class="dc-brief" id="likesBrief">
+                        <div class="dc-name-row">
+                            <h2>
+                                <a href="{{ url_for('view_profile', profile_id=item.profile.id) }}" class="likes-name-link">
+                                    {{ item.profile.full_name }}
+                                </a>
+                            </h2>
+                        </div>
                         <div class="card-meta">
                             <span class="course-badge">{{ item.profile.course }} курс</span>
                             <span class="university">{{ item.profile.university }}</span>
                         </div>
+                        {% if item.profile.subjects %}
+                        <div class="dc-tags">
+                            {% for subject in item.profile.subjects.split(',')[:3] %}
+                                <span class="tag">{{ subject.strip() }}</span>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
                     </div>
-                    
-                    <div class="card-details">
+
+                    <div class="dc-details" id="likesDetails" style="display:none;">
+                        {% if item.profile.description %}
+                        <div class="detail-section">
+                            <h4>О себе</h4>
+                            <p class="dc-details-text">{{ item.profile.description }}</p>
+                        </div>
+                        {% endif %}
+
+                        {% if item.profile.goals %}
+                        <div class="detail-section">
+                            <h4>Цели</h4>
+                            <p class="dc-details-text">{{ item.profile.goals }}</p>
+                        </div>
+                        {% endif %}
+
                         {% if item.profile.subjects %}
                         <div class="detail-section">
                             <h4>Предметы</h4>
@@ -53,6 +82,13 @@
                                     <span class="tag tag-interest">{{ interest.strip() }}</span>
                                 {% endfor %}
                             </div>
+                        </div>
+                        {% endif %}
+
+                        {% if item.profile.faculty %}
+                        <div class="detail-section">
+                            <h4>Факультет</h4>
+                            <p class="dc-details-text">{{ item.profile.faculty }}</p>
                         </div>
                         {% endif %}
                     </div>
@@ -124,6 +160,27 @@ function likesDislike(profileId) {
         alert('Произошла ошибка при отправке дизлайка');
     });
 }
+
+(function() {
+    var infoBtn = document.getElementById('likesInfoBtn');
+    var brief = document.getElementById('likesBrief');
+    var details = document.getElementById('likesDetails');
+    var showingDetails = false;
+
+    if (!infoBtn || !brief || !details) return;
+    infoBtn.addEventListener('click', function() {
+        showingDetails = !showingDetails;
+        if (showingDetails) {
+            brief.style.display = 'none';
+            details.style.display = 'block';
+            details.style.animation = 'dcFadeIn 0.25s ease';
+        } else {
+            details.style.display = 'none';
+            brief.style.display = 'block';
+            brief.style.animation = 'dcFadeIn 0.25s ease';
+        }
+    });
+})();
 </script>
 
 <style>
@@ -156,7 +213,14 @@ function likesDislike(profileId) {
 
 .tinder-card-container {
     position: relative;
-    height: 600px;
+    min-width: 300px;
+    max-width: 420px;
+    min-height: 560px;
+    max-height: 680px;
+    height: clamp(560px, 72vh, 680px);
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
     margin-bottom: 1.5rem;
 }
 
@@ -203,20 +267,73 @@ function likesDislike(profileId) {
     opacity: 0.8;
 }
 
-.discover-info {
+.dc-info-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: rgba(15,23,42,0.65);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--color-border);
+    color: var(--color-foreground);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, transform 0.2s;
+    z-index: 5;
+}
+
+.dc-info-btn:hover {
+    background: rgba(51,65,85,0.7);
+    transform: scale(1.08);
+}
+
+.dc-content {
     position: absolute;
     bottom: 0;
     left: 0;
     right: 0;
     padding: 1.5rem;
-    max-height: 200px;
-    overflow-y: auto;
+    background: rgba(15, 23, 42, 0.92);
+    border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+    border-top: 1px solid rgba(148,163,184,0.18);
 }
 
-.card-header h2 {
+.dc-name-row h2 {
     margin: 0 0 0.5rem;
     color: var(--color-foreground);
     font-size: 1.5rem;
+}
+
+.dc-brief {
+    min-height: 120px;
+}
+
+.dc-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.likes-name-link {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.likes-name-link:hover {
+    color: #93c5fd;
+    border-bottom-color: rgba(147, 197, 253, 0.45);
+}
+
+.likes-name-link:focus-visible {
+    outline: 2px solid rgba(96, 165, 250, 0.45);
+    outline-offset: 2px;
+    border-radius: 4px;
 }
 
 .card-meta {
@@ -247,6 +364,19 @@ function likesDislike(profileId) {
     font-weight: 600;
 }
 
+.dc-details {
+    max-height: 220px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.dc-details-text {
+    margin: 0;
+    color: var(--color-text);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
 .tags {
     display: flex;
     flex-wrap: wrap;
@@ -267,6 +397,10 @@ function likesDislike(profileId) {
     color: var(--color-secondary);
     border-color: rgba(139,92,246,0.25);
 }
+
+.dc-details::-webkit-scrollbar { width: 4px; }
+.dc-details::-webkit-scrollbar-track { background: transparent; }
+.dc-details::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.3); border-radius: 4px; }
 
 .tinder-actions {
     display: flex;
@@ -317,13 +451,22 @@ function likesDislike(profileId) {
     box-shadow: 0 25px 50px rgba(59,130,246,0.5);
 }
 
+@keyframes dcFadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
 @media (max-width: 480px) {
     .tinder-container {
         padding: 1rem 0.75rem 5rem;
     }
     
     .tinder-card-container {
-        height: 520px;
+        min-width: 0;
+        max-width: min(360px, 100%);
+        min-height: 520px;
+        max-height: 620px;
+        height: clamp(520px, 70vh, 620px);
     }
     
     .card-photo {

@@ -60,17 +60,17 @@
         <div class="header-accent"></div>
     </header>
 
-    <main class="container">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div class="flash-messages">
-                    {% for category, message in messages %}
-                        <div class="flash flash-{{ category }}">{{ message }}</div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-        {% endwith %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-messages">
+                {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
 
+    <main class="container">
         {% block content %}{% endblock %}
     </main>
 
@@ -89,6 +89,39 @@
                 btn.childNodes[0].textContent = expanded ? 'Свернуть ' : 'Ещё ';
             });
         });
+
+        (function() {
+            var flashWrap = document.querySelector('.flash-messages');
+            if (!flashWrap) return;
+
+            function hideFlash(node) {
+                if (!node || node.classList.contains('is-hiding')) return;
+                node.classList.add('is-hiding');
+                setTimeout(function() {
+                    if (node.parentNode) node.parentNode.removeChild(node);
+                    if (flashWrap && !flashWrap.querySelector('.flash') && flashWrap.parentNode) {
+                        flashWrap.parentNode.removeChild(flashWrap);
+                    }
+                }, 300);
+            }
+
+            flashWrap.querySelectorAll('.flash').forEach(function(flash, index) {
+                var timeoutMs = 4200 + index * 250;
+                var timer = setTimeout(function() {
+                    hideFlash(flash);
+                }, timeoutMs);
+
+                flash.addEventListener('mouseenter', function() {
+                    clearTimeout(timer);
+                });
+
+                flash.addEventListener('mouseleave', function() {
+                    timer = setTimeout(function() {
+                        hideFlash(flash);
+                    }, 1200);
+                });
+            });
+        })();
     </script>
 </body>
 </html>

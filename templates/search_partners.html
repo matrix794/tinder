@@ -44,7 +44,11 @@
                     </div>
                     {% endif %}
                     <div class="profile-info">
-                        <h3>{{ profile.full_name }}</h3>
+                        <h3>
+                            <a class="profile-name-link" href="{{ url_for('view_profile', profile_id=profile.id) }}">
+                                {{ profile.full_name }}
+                            </a>
+                        </h3>
                         <div class="profile-meta">
                             <span class="course-badge">{{ profile.course }} курс</span>
                             <span class="university">{{ profile.university }}</span>
