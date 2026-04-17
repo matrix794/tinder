@@ -2861,7 +2861,17 @@ def admin_reports():
         .all()
     )
     reports = open_reports + resolved_reports
-    return render_template('admin/reports.html', reports=reports, now_utc=datetime.utcnow())
+    total_report_counts = dict(
+        db.session.query(UserReport.reported_user_id, func.count(UserReport.id))
+        .group_by(UserReport.reported_user_id)
+        .all()
+    )
+    return render_template(
+        'admin/reports.html',
+        reports=reports,
+        now_utc=datetime.utcnow(),
+        total_report_counts=total_report_counts,
+    )
 
 
 @app.route('/admin/reports/<int:report_id>/action', methods=['POST'])

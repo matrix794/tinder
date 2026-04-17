@@ -41,6 +41,9 @@
                             <td>
                                 {{ report.reported_user.profile.full_name if report.reported_user and report.reported_user.profile else (report.reported_user.username if report.reported_user else '—') }}<br>
                                 {% if report.reported_user %}<span class="meta">@{{ report.reported_user.username }}</span>{% endif %}
+                                {% if report.reported_user_id %}
+                                    <span class="badge">{{ total_report_counts.get(report.reported_user_id, 0) }} всего</span>
+                                {% endif %}
                             </td>
                             <td>
                                 {% if report.message %}
