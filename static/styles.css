@@ -3125,14 +3125,31 @@ a:focus-visible {
 
 @media (max-width: 600px) {
 	.navbar {
+		grid-template-columns: minmax(0, 1fr) auto;
 		min-height: auto;
 		padding: 0.5rem 0.75rem 0.6rem;
 		row-gap: 0.45rem;
+		align-items: center;
+	}
+
+	.logo-wrap {
+		grid-column: 1;
+		grid-row: 1;
+		min-width: 0;
+	}
+
+	.nav-right {
+		grid-column: 2;
+		grid-row: 1;
+		justify-self: end;
+		gap: 0.35rem;
+		flex-wrap: nowrap;
 	}
 
 	.nav-center {
 		display: flex;
 		grid-column: 1 / -1;
+		grid-row: 2;
 		justify-content: flex-start;
 		gap: 0.45rem;
 		padding: 0 0 0.2rem;
@@ -3164,12 +3181,8 @@ a:focus-visible {
 		height: 15px;
 	}
 
-	.nav-right {
-		gap: 0.45rem;
-	}
-
 	.logo-link {
-		font-size: 1.05rem;
+		font-size: 1rem;
 	}
 
 	.logo-icon svg {
@@ -3178,13 +3191,19 @@ a:focus-visible {
 	}
 
 	.nav-link-muted {
-		display: none;
+		display: inline-flex;
+		font-size: 0.82rem;
+		padding: 0.5rem 0.65rem;
+		max-width: 92px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.nav-btn-primary,
 	.nav-btn-outline {
-		font-size: 0.92rem;
-		padding: 0.54rem 1rem !important;
+		font-size: 0.86rem;
+		padding: 0.5rem 0.8rem !important;
 		min-width: 0;
 	}
 

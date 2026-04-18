@@ -1350,10 +1350,9 @@ body.chat-fullscreen .container {
     padding: 0;
     gap: 0;
     animation: none;
-    min-height: calc(100vh - 75px);
-    min-height: calc(100dvh - 75px);
-    height: calc(100vh - 75px);
-    height: calc(100dvh - 75px);
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
     overflow: hidden;
 }
 
@@ -2414,7 +2413,7 @@ body.chat-fullscreen .flash-messages {
     }
     
     .chat-input {
-        padding: 15px;
+        padding: 15px 15px calc(15px + env(safe-area-inset-bottom));
     }
 
     .message-attachment-image img {
