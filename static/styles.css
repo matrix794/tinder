@@ -3200,19 +3200,19 @@ a:focus-visible {
 	}
 
 	.nav-link-muted {
-		display: inline-flex;
-		font-size: 0.82rem;
-		padding: 0.5rem 0.65rem;
-		max-width: 92px;
-		overflow: hidden;
-		text-overflow: ellipsis;
+		display: inline-block;
+		font-size: 0.8rem;
+		padding: 0.48rem 0.5rem;
+		max-width: none;
+		overflow: visible;
+		text-overflow: clip;
 		white-space: nowrap;
 	}
 
 	.nav-btn-primary,
 	.nav-btn-outline {
-		font-size: 0.86rem;
-		padding: 0.5rem 0.8rem !important;
+		font-size: 0.82rem;
+		padding: 0.46rem 0.68rem !important;
 		min-width: 0;
 	}
 
