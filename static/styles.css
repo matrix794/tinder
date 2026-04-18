@@ -3132,6 +3132,15 @@ a:focus-visible {
 		align-items: center;
 	}
 
+	.home-page .logo-link {
+		font-size: 1rem;
+	}
+
+	.home-page .logo-icon svg {
+		width: 26px;
+		height: 26px;
+	}
+
 	.logo-wrap {
 		grid-column: 1;
 		grid-row: 1;
