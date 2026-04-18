@@ -3125,12 +3125,47 @@ a:focus-visible {
 
 @media (max-width: 600px) {
 	.navbar {
-		min-height: 72px;
-		padding: 0 1rem;
+		min-height: auto;
+		padding: 0.5rem 0.75rem 0.6rem;
+		row-gap: 0.45rem;
 	}
 
 	.nav-center {
-		display: none;
+		display: flex;
+		grid-column: 1 / -1;
+		justify-content: flex-start;
+		gap: 0.45rem;
+		padding: 0 0 0.2rem;
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+		scrollbar-width: thin;
+		scrollbar-color: rgba(141, 163, 208, 0.55) transparent;
+	}
+
+	.nav-center::-webkit-scrollbar {
+		height: 4px;
+	}
+
+	.nav-center::-webkit-scrollbar-thumb {
+		background: rgba(141, 163, 208, 0.55);
+		border-radius: 999px;
+	}
+
+	.nav-item {
+		flex: 0 0 auto;
+		font-size: 0.9rem;
+		padding: 0.5rem 0.75rem;
+		border-color: rgba(90, 110, 160, 0.35);
+		background: rgba(15, 26, 55, 0.45);
+	}
+
+	.nav-icon svg {
+		width: 15px;
+		height: 15px;
+	}
+
+	.nav-right {
+		gap: 0.45rem;
 	}
 
 	.logo-link {
