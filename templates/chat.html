@@ -12,7 +12,11 @@
         </div>
         <div class="chat-sidebar-list">
             {% for item in chat_list %}
-            <a href="{{ url_for('chat', user_id=item.user_id) }}" class="chat-sidebar-item {% if item.user_id == selected_chat_user_id %}is-active{% endif %}">
+            <a
+                href="{{ url_for('chat', user_id=item.user_id) }}"
+                class="chat-sidebar-item {% if item.user_id == selected_chat_user_id %}is-active{% endif %}"
+                data-chat-user-id="{{ item.user_id }}"
+            >
                 <div class="chat-sidebar-avatar">
                     {% if item.profile.photo_filename %}
                     <img src="{{ url_for('uploaded_file', filename=item.profile.photo_filename) }}" alt="{{ item.profile.full_name }}">
@@ -1006,6 +1010,31 @@ document.addEventListener('DOMContentLoaded', function() {
         return Boolean(chatMessages.querySelector('.message-actions.is-open'));
     }
 
+    function updateSidebarUnreadCounts(unreadCounts) {
+        const counts = unreadCounts || {};
+        const sidebarItems = document.querySelectorAll('.chat-sidebar-item[data-chat-user-id]');
+        if (!sidebarItems.length) return;
+
+        sidebarItems.forEach(function(item) {
+            const chatUserId = item.dataset.chatUserId || '';
+            const normalizedCount = Number(counts[chatUserId] || 0);
+            const bottom = item.querySelector('.chat-sidebar-bottom');
+            if (!bottom) return;
+
+            let badge = item.querySelector('.chat-sidebar-unread');
+            if (normalizedCount > 0) {
+                if (!badge) {
+                    badge = document.createElement('span');
+                    badge.className = 'chat-sidebar-unread';
+                    bottom.appendChild(badge);
+                }
+                badge.textContent = String(normalizedCount);
+            } else if (badge) {
+                badge.remove();
+            }
+        });
+    }
+
     function setChatControlsDisabled(disabled) {
         if (messageInput) messageInput.disabled = disabled;
         if (clearReplyBtn) clearReplyBtn.disabled = disabled;
@@ -1057,6 +1086,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (Array.isArray(data.pinned_messages)) {
                     const currentPinned = getCurrentPinnedMessage();
                     setPinnedMessages(data.pinned_messages, currentPinned ? currentPinned.id : null);
+                }
+                if (data.unread_counts && typeof data.unread_counts === 'object') {
+                    updateSidebarUnreadCounts(data.unread_counts);
                 }
             })
             .catch(error => {

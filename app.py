@@ -2442,10 +2442,22 @@ def get_messages(user_id):
     messages_data = []
     for message in messages:
         messages_data.append(serialize_chat_message(message))
+
+    unread_rows = (
+        db.session.query(Message.sender_id, func.count(Message.id))
+        .filter(
+            Message.receiver_id == current_user.id,
+            Message.is_read == False,
+        )
+        .group_by(Message.sender_id)
+        .all()
+    )
+    unread_counts = {str(sender_id): int(count) for sender_id, count in unread_rows}
     
     return {
         'messages': messages_data,
         'pinned_messages': serialize_chat_pinned_messages(current_user.id, user_id),
+        'unread_counts': unread_counts,
     }
 
 
